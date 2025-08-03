@@ -3,10 +3,10 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Truck, Clock, AlertCircle } from "lucide-react"
+import { Truck, Clock } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { supabase } from "@/lib/supabase"
 
 interface ShippingRatesStepProps {
   shipmentData: any
@@ -21,7 +21,7 @@ interface ShippingRate {
   id: string
   provider: string
   service_level_name: string
-  amount: string
+  amount: number
   currency: string
   estimated_days: number
   duration_terms: string
@@ -39,7 +39,7 @@ export function ShippingRatesStep({
 }: ShippingRatesStepProps) {
   const { toast } = useToast()
   const [rates, setRates] = useState<ShippingRate[]>([])
-  const [selectedRateId, setSelectedRateId] = useState<string | null>(shipmentData.selectedRate?.id || null)
+  const [selectedRateId, setSelectedRateId] = useState<string>("")
   const [fetchingRates, setFetchingRates] = useState(false)
 
   useEffect(() => {
@@ -51,51 +51,39 @@ export function ShippingRatesStep({
   const fetchShippingRates = async () => {
     setFetchingRates(true)
     try {
-      // Prepare shipment data for Shippo API
-      const shipmentPayload = {
-        address_from: {
-          name: shipmentData.fromAddress.full_name,
-          company: shipmentData.fromAddress.company || "",
-          street1: shipmentData.fromAddress.address_line1,
-          street2: shipmentData.fromAddress.address_line2 || "",
-          city: shipmentData.fromAddress.city,
-          state: shipmentData.fromAddress.state,
-          zip: shipmentData.fromAddress.postal_code,
-          country: shipmentData.fromAddress.country_code,
-          phone: shipmentData.fromAddress.phone || "",
-          email: shipmentData.fromAddress.email || "",
-        },
-        address_to: {
-          name: shipmentData.toAddress.full_name,
-          company: shipmentData.toAddress.company || "",
-          street1: shipmentData.toAddress.street1,
-          street2: shipmentData.toAddress.street2 || "",
-          city: shipmentData.toAddress.city,
-          state: shipmentData.toAddress.state,
-          zip: shipmentData.toAddress.postal_code,
-          country: shipmentData.toAddress.country_code,
-          phone: shipmentData.toAddress.phone_number || "",
-          email: shipmentData.toAddress.email || "",
-        },
-        parcels: [
-          {
-            length: shipmentData.parcel.length,
-            width: shipmentData.parcel.width,
-            height: shipmentData.parcel.height,
-            distance_unit: shipmentData.parcel.distance_unit,
-            weight: shipmentData.parcel.weight,
-            mass_unit: shipmentData.parcel.mass_unit,
-          },
-        ],
-        async: false,
-      }
-
       const response = await fetch("/api/calculate-rates", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(shipmentPayload),
+        body: JSON.stringify({
+          from_address: {
+            name: shipmentData.fromAddress.full_name,
+            street1: shipmentData.fromAddress.address_line1,
+            street2: shipmentData.fromAddress.address_line2,
+            city: shipmentData.fromAddress.city,
+            state: shipmentData.fromAddress.state,
+            zip: shipmentData.fromAddress.postal_code,
+            country: shipmentData.fromAddress.country_code,
+          },
+          to_address: {
+            name: shipmentData.toAddress.full_name,
+            street1: shipmentData.toAddress.street1,
+            street2: shipmentData.toAddress.street2,
+            city: shipmentData.toAddress.city,
+            state: shipmentData.toAddress.state,
+            zip: shipmentData.toAddress.postal_code,
+            country: shipmentData.toAddress.country_code,
+          },
+          parcel: {
+            length: shipmentData.parcel.length,
+            width: shipmentData.parcel.width,
+            height: shipmentData.parcel.height,
+            distance_unit: shipmentData.parcel.distance_unit,
+            weight: shipmentData.parcel.weight,
+            mass_unit: "oz", // Ensure mass_unit is always 'oz'
+          },
+        }),
       })
 
       if (!response.ok) {
@@ -103,38 +91,17 @@ export function ShippingRatesStep({
       }
 
       const data = await response.json()
+      setRates(data.rates || [])
 
       if (data.rates && data.rates.length > 0) {
-        // Save rates to database
-        const ratesData = data.rates.map((rate: any) => ({
-          provider: rate.carrier,
-          service_level_name: rate.service,
-          amount: Number.parseFloat(rate.amount),
-          currency: rate.currency,
-          estimated_days: rate.estimated_days || null,
-          duration_terms: rate.duration_terms || "",
-          carrier_account: rate.carrier_account || "",
-          attributes: rate,
-        }))
-
-        const { data: savedRates, error } = await supabase.from("shippo_rates").insert(ratesData).select()
-
-        if (error) throw error
-
-        setRates(savedRates)
-        onUpdate({ availableRates: savedRates })
-      } else {
-        toast({
-          title: "No Rates Available",
-          description: "No shipping rates were found for this shipment",
-          variant: "destructive",
-        })
+        // Auto-select the first rate
+        setSelectedRateId(data.rates[0].id)
       }
     } catch (error) {
       console.error("Error fetching rates:", error)
       toast({
         title: "Error",
-        description: "Failed to fetch shipping rates",
+        description: "Failed to fetch shipping rates. Please try again.",
         variant: "destructive",
       })
     } finally {
@@ -144,41 +111,53 @@ export function ShippingRatesStep({
 
   const handleRateSelect = (rate: ShippingRate) => {
     setSelectedRateId(rate.id)
-    onUpdate({ selectedRate: rate })
+    onUpdate({ selectedRate: rate, availableRates: rates })
   }
 
   const handleContinue = () => {
-    if (selectedRateId) {
+    const selectedRate = rates.find((rate) => rate.id === selectedRateId)
+    if (selectedRate) {
+      onUpdate({ selectedRate, availableRates: rates })
       onNext()
     }
   }
 
-  const getProviderLogo = (provider: string) => {
-    // You can add actual logos here
-    return provider.toUpperCase()
+  const formatPrice = (amount: number, currency = "USD") => {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: currency,
+    }).format(amount)
   }
 
-  const formatEstimatedDays = (days: number | null) => {
-    if (!days) return "Unknown"
-    if (days === 1) return "1 business day"
-    return `${days} business days`
+  const getProviderLogo = (provider: string) => {
+    switch (provider.toLowerCase()) {
+      case "usps":
+        return "🇺🇸"
+      case "ups":
+        return "📦"
+      case "fedex":
+        return "✈️"
+      case "dhl":
+        return "🚚"
+      default:
+        return "📮"
+    }
   }
 
   if (fetchingRates) {
     return (
       <div className="space-y-4">
-        <div className="flex items-center gap-2 mb-4">
-          <Truck className="h-5 w-5" />
-          <span className="text-lg font-semibold">Fetching Shipping Rates...</span>
+        <div className="text-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Fetching shipping rates...</p>
         </div>
-        {[1, 2, 3, 4].map((i) => (
+        {[1, 2, 3].map((i) => (
           <Card key={i}>
             <CardContent className="p-4">
-              <div className="flex justify-between items-center">
-                <div className="space-y-2">
-                  <Skeleton className="h-4 w-24" />
-                  <Skeleton className="h-3 w-32" />
-                  <Skeleton className="h-3 w-20" />
+              <div className="flex items-center justify-between">
+                <div className="space-y-2 flex-1">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-3 w-48" />
                 </div>
                 <Skeleton className="h-6 w-16" />
               </div>
@@ -189,32 +168,25 @@ export function ShippingRatesStep({
     )
   }
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold flex items-center gap-2">
-          <Truck className="h-5 w-5" />
-          Available Shipping Rates
-        </h3>
-        <Button variant="outline" size="sm" onClick={fetchShippingRates} disabled={fetchingRates}>
-          Refresh Rates
+  if (rates.length === 0) {
+    return (
+      <div className="text-center py-8">
+        <Truck className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+        <h3 className="text-lg font-medium mb-2">No shipping rates available</h3>
+        <p className="text-muted-foreground mb-4">
+          We couldn't find any shipping rates for this route. Please check your addresses and try again.
+        </p>
+        <Button onClick={fetchShippingRates} variant="outline">
+          Retry
         </Button>
       </div>
+    )
+  }
 
-      {rates.length === 0 ? (
-        <Card>
-          <CardContent className="p-8 text-center">
-            <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-medium mb-2">No Rates Available</h3>
-            <p className="text-muted-foreground mb-4">
-              We couldn't find any shipping rates for this shipment. Please check your addresses and parcel details.
-            </p>
-            <Button onClick={fetchShippingRates} disabled={fetchingRates}>
-              Try Again
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-medium mb-4">Choose a shipping service</h3>
         <div className="space-y-3">
           {rates.map((rate) => (
             <Card
@@ -225,69 +197,71 @@ export function ShippingRatesStep({
               onClick={() => handleRateSelect(rate)}
             >
               <CardContent className="p-4">
-                <div className="flex justify-between items-center">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-muted rounded flex items-center justify-center text-xs font-bold">
-                          {getProviderLogo(rate.provider)}
-                        </div>
-                        <div>
-                          <div className="font-medium">{rate.provider}</div>
-                          <div className="text-sm text-muted-foreground">{rate.service_level_name}</div>
-                        </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="text-2xl">{getProviderLogo(rate.provider)}</div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-medium">{rate.provider.toUpperCase()}</span>
+                        <Badge variant="outline" className="text-xs">
+                          {rate.service_level_name}
+                        </Badge>
                       </div>
-                    </div>
-
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <div className="flex items-center gap-1">
-                        <Clock className="h-4 w-4" />
-                        {formatEstimatedDays(rate.estimated_days)}
+                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          <span>
+                            {rate.estimated_days} {rate.estimated_days === 1 ? "day" : "days"}
+                          </span>
+                        </div>
+                        {rate.duration_terms && <span className="text-xs">({rate.duration_terms})</span>}
                       </div>
                     </div>
                   </div>
-
                   <div className="text-right">
-                    <div className="text-2xl font-bold">${Number.parseFloat(rate.amount).toFixed(2)}</div>
-                    <div className="text-sm text-muted-foreground">{rate.currency}</div>
+                    <div className="text-lg font-semibold">{formatPrice(rate.amount, rate.currency)}</div>
+                    <div className="text-xs text-muted-foreground">{rate.currency}</div>
                   </div>
                 </div>
               </CardContent>
             </Card>
           ))}
         </div>
-      )}
+      </div>
 
       {/* Selected Rate Summary */}
       {selectedRateId && (
         <Card className="bg-muted/50">
           <CardContent className="p-4">
-            <h4 className="font-medium mb-2">Selected Rate:</h4>
+            <h4 className="font-medium mb-2">Selected Service:</h4>
             {(() => {
-              const selectedRate = rates.find((r) => r.id === selectedRateId)
-              return selectedRate ? (
+              const selectedRate = rates.find((rate) => rate.id === selectedRateId)
+              if (!selectedRate) return null
+
+              return (
                 <div className="text-sm space-y-1">
                   <div>
-                    <strong>Carrier:</strong> {selectedRate.provider}
+                    <strong>Carrier:</strong> {selectedRate.provider.toUpperCase()}
                   </div>
                   <div>
                     <strong>Service:</strong> {selectedRate.service_level_name}
                   </div>
                   <div>
-                    <strong>Cost:</strong> ${Number.parseFloat(selectedRate.amount).toFixed(2)} {selectedRate.currency}
+                    <strong>Cost:</strong> {formatPrice(selectedRate.amount, selectedRate.currency)}
                   </div>
                   <div>
-                    <strong>Estimated Delivery:</strong> {formatEstimatedDays(selectedRate.estimated_days)}
+                    <strong>Delivery:</strong> {selectedRate.estimated_days}{" "}
+                    {selectedRate.estimated_days === 1 ? "day" : "days"}
                   </div>
                 </div>
-              ) : null
+              )
             })()}
           </CardContent>
         </Card>
       )}
 
       {/* Navigation */}
-      <div className="flex justify-between pt-4">
+      <div className="flex justify-between">
         <Button variant="outline" onClick={onPrev} disabled={isLoading}>
           Previous
         </Button>

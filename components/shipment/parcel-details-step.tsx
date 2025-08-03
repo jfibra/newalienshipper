@@ -6,10 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Separator } from "@/components/ui/separator"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Package, Ruler, Weight } from "lucide-react"
-import { useToast } from "@/hooks/use-toast"
 import { supabase } from "@/lib/supabase"
+import { useToast } from "@/hooks/use-toast"
 
 interface ParcelDetailsStepProps {
   shipmentData: any
@@ -19,103 +19,103 @@ interface ParcelDetailsStepProps {
   isLoading: boolean
 }
 
+interface ParcelData {
+  length: string
+  width: string
+  height: string
+  weight: string
+  distanceUnit: "in" | "cm"
+  massUnit: "oz" | "lb" | "g" | "kg"
+  template: string
+}
+
 const PARCEL_TEMPLATES = [
-  { id: "custom", name: "Custom Dimensions", dimensions: null },
-  { id: "small_box", name: "Small Box", dimensions: { length: 8, width: 6, height: 4, weight: 1 } },
-  { id: "medium_box", name: "Medium Box", dimensions: { length: 12, width: 9, height: 6, weight: 2 } },
-  { id: "large_box", name: "Large Box", dimensions: { length: 16, width: 12, height: 8, weight: 5 } },
-  { id: "envelope", name: "Envelope", dimensions: { length: 12, width: 9, height: 0.5, weight: 0.5 } },
-  { id: "tube", name: "Tube", dimensions: { length: 24, width: 4, height: 4, weight: 1 } },
+  { id: "custom", name: "Custom", description: "Enter custom dimensions" },
+  { id: "usps_small_flat_rate_box", name: "USPS Small Flat Rate Box", dimensions: "8.5 × 5.5 × 1.625 in" },
+  { id: "usps_medium_flat_rate_box", name: "USPS Medium Flat Rate Box", dimensions: "11 × 8.5 × 5.5 in" },
+  { id: "usps_large_flat_rate_box", name: "USPS Large Flat Rate Box", dimensions: "12 × 12 × 5.5 in" },
+  { id: "fedex_small_box", name: "FedEx Small Box", dimensions: "12.25 × 10.75 × 1.5 in" },
+  { id: "fedex_medium_box", name: "FedEx Medium Box", dimensions: "13.25 × 11.5 × 2.38 in" },
+  { id: "ups_small_box", name: "UPS Small Box", dimensions: "13 × 11 × 2 in" },
 ]
 
 export function ParcelDetailsStep({ shipmentData, onUpdate, onNext, onPrev, isLoading }: ParcelDetailsStepProps) {
   const { toast } = useToast()
-  const [formData, setFormData] = useState({
-    length: shipmentData.parcel?.length || "",
-    width: shipmentData.parcel?.width || "",
-    height: shipmentData.parcel?.height || "",
-    weight: shipmentData.parcel?.weight || "",
-    distance_unit: shipmentData.parcel?.distance_unit || "in",
-    mass_unit: shipmentData.parcel?.mass_unit || "oz",
-    parcel_template: shipmentData.parcel?.parcel_template || "custom",
+  const [parcelData, setParcelData] = useState<ParcelData>({
+    length: "",
+    width: "",
+    height: "",
+    weight: "",
+    distanceUnit: "in",
+    massUnit: "oz",
+    template: "custom",
   })
 
-  const handleTemplateChange = (templateId: string) => {
-    const template = PARCEL_TEMPLATES.find((t) => t.id === templateId)
-    if (template && template.dimensions) {
-      setFormData((prev) => ({
-        ...prev,
-        parcel_template: templateId,
-        length: template.dimensions!.length.toString(),
-        width: template.dimensions!.width.toString(),
-        height: template.dimensions!.height.toString(),
-        weight: template.dimensions!.weight.toString(),
-      }))
-    } else {
-      setFormData((prev) => ({
-        ...prev,
-        parcel_template: templateId,
-      }))
-    }
+  const handleInputChange = (field: keyof ParcelData, value: string) => {
+    setParcelData((prev) => ({ ...prev, [field]: value }))
   }
 
-  const handleInputChange = (field: string, value: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: value,
-    }))
+  const handleTemplateSelect = (template: string) => {
+    setParcelData((prev) => ({ ...prev, template }))
+
+    // Auto-fill dimensions for known templates
+    switch (template) {
+      case "usps_small_flat_rate_box":
+        setParcelData((prev) => ({ ...prev, length: "8.5", width: "5.5", height: "1.625" }))
+        break
+      case "usps_medium_flat_rate_box":
+        setParcelData((prev) => ({ ...prev, length: "11", width: "8.5", height: "5.5" }))
+        break
+      case "usps_large_flat_rate_box":
+        setParcelData((prev) => ({ ...prev, length: "12", width: "12", height: "5.5" }))
+        break
+      case "fedex_small_box":
+        setParcelData((prev) => ({ ...prev, length: "12.25", width: "10.75", height: "1.5" }))
+        break
+      case "fedex_medium_box":
+        setParcelData((prev) => ({ ...prev, length: "13.25", width: "11.5", height: "2.38" }))
+        break
+      case "ups_small_box":
+        setParcelData((prev) => ({ ...prev, length: "13", width: "11", height: "2" }))
+        break
+      default:
+        // Custom - don't auto-fill
+        break
+    }
   }
 
   const handleSubmit = async () => {
     try {
       // Validate required fields
-      if (!formData.length || !formData.width || !formData.height || !formData.weight) {
+      if (!parcelData.length || !parcelData.width || !parcelData.height || !parcelData.weight) {
         toast({
-          title: "Error",
+          title: "Missing Information",
           description: "Please fill in all parcel dimensions and weight",
           variant: "destructive",
         })
         return
       }
 
-      // Convert to numbers and validate
-      const length = Number.parseFloat(formData.length)
-      const width = Number.parseFloat(formData.width)
-      const height = Number.parseFloat(formData.height)
-      const weight = Number.parseFloat(formData.weight)
-
-      if (length <= 0 || width <= 0 || height <= 0 || weight <= 0) {
-        toast({
-          title: "Error",
-          description: "All dimensions and weight must be greater than 0",
-          variant: "destructive",
-        })
-        return
+      // Create parcel object
+      const parcel = {
+        id: crypto.randomUUID(),
+        length: Number.parseFloat(parcelData.length),
+        width: Number.parseFloat(parcelData.width),
+        height: Number.parseFloat(parcelData.height),
+        weight: Number.parseFloat(parcelData.weight),
+        distance_unit: parcelData.distanceUnit,
+        mass_unit: parcelData.massUnit,
+        parcel_template: parcelData.template !== "custom" ? parcelData.template : null,
+        created_at: new Date().toISOString(),
       }
 
-      // Save parcel to database
-      const parcelData = {
-        length,
-        width,
-        height,
-        weight,
-        distance_unit: formData.distance_unit,
-        mass_unit: formData.mass_unit,
-        parcel_template: formData.parcel_template,
-      }
-
-      const { data, error } = await supabase.from("parcels").insert([parcelData]).select().single()
+      // Save to database
+      const { data, error } = await supabase.from("parcels").insert([parcel]).select().single()
 
       if (error) throw error
 
-      // Update shipment data
       onUpdate({ parcel: data })
       onNext()
-
-      toast({
-        title: "Success",
-        description: "Parcel details saved successfully",
-      })
     } catch (error) {
       console.error("Error saving parcel:", error)
       toast({
@@ -126,89 +126,56 @@ export function ParcelDetailsStep({ shipmentData, onUpdate, onNext, onPrev, isLo
     }
   }
 
-  const isValid = formData.length && formData.width && formData.height && formData.weight
+  const isFormValid = () => {
+    return parcelData.length && parcelData.width && parcelData.height && parcelData.weight
+  }
 
   return (
     <div className="space-y-6">
-      {/* Template Selection */}
-      <div>
-        <Label htmlFor="template">Parcel Template</Label>
-        <Select value={formData.parcel_template} onValueChange={handleTemplateChange}>
-          <SelectTrigger className="mt-1">
-            <SelectValue placeholder="Select a template" />
-          </SelectTrigger>
-          <SelectContent>
-            {PARCEL_TEMPLATES.map((template) => (
-              <SelectItem key={template.id} value={template.id}>
-                {template.name}
-                {template.dimensions && (
-                  <span className="text-muted-foreground ml-2">
-                    ({template.dimensions.length}"×{template.dimensions.width}"×{template.dimensions.height}",{" "}
-                    {template.dimensions.weight}oz)
-                  </span>
-                )}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <p className="text-sm text-muted-foreground mt-1">
-          Choose a template or select "Custom Dimensions" to enter your own
-        </p>
-      </div>
-
-      <Separator />
+      {/* Package Template Selection */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Package className="h-5 w-5" />
+            Package Type
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <RadioGroup value={parcelData.template} onValueChange={handleTemplateSelect}>
+            <div className="grid gap-3">
+              {PARCEL_TEMPLATES.map((template) => (
+                <div key={template.id} className="flex items-center space-x-2">
+                  <RadioGroupItem value={template.id} id={template.id} />
+                  <Label htmlFor={template.id} className="flex-1 cursor-pointer">
+                    <div className="font-medium">{template.name}</div>
+                    {template.dimensions && <div className="text-sm text-muted-foreground">{template.dimensions}</div>}
+                    {template.description && (
+                      <div className="text-sm text-muted-foreground">{template.description}</div>
+                    )}
+                  </Label>
+                </div>
+              ))}
+            </div>
+          </RadioGroup>
+        </CardContent>
+      </Card>
 
       {/* Dimensions */}
-      <div>
-        <h3 className="text-lg font-semibold flex items-center gap-2 mb-4">
-          <Ruler className="h-5 w-5" />
-          Dimensions
-        </h3>
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Ruler className="h-5 w-5" />
+            Dimensions
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
           <div>
-            <Label htmlFor="length">Length *</Label>
-            <Input
-              id="length"
-              type="number"
-              step="0.1"
-              min="0.1"
-              value={formData.length}
-              onChange={(e) => handleInputChange("length", e.target.value)}
-              placeholder="0.0"
-              className="mt-1"
-            />
-          </div>
-          <div>
-            <Label htmlFor="width">Width *</Label>
-            <Input
-              id="width"
-              type="number"
-              step="0.1"
-              min="0.1"
-              value={formData.width}
-              onChange={(e) => handleInputChange("width", e.target.value)}
-              placeholder="0.0"
-              className="mt-1"
-            />
-          </div>
-          <div>
-            <Label htmlFor="height">Height *</Label>
-            <Input
-              id="height"
-              type="number"
-              step="0.1"
-              min="0.1"
-              value={formData.height}
-              onChange={(e) => handleInputChange("height", e.target.value)}
-              placeholder="0.0"
-              className="mt-1"
-            />
-          </div>
-          <div>
-            <Label htmlFor="distance_unit">Unit</Label>
-            <Select value={formData.distance_unit} onValueChange={(value) => handleInputChange("distance_unit", value)}>
-              <SelectTrigger className="mt-1">
+            <Label>Unit</Label>
+            <Select
+              value={parcelData.distanceUnit}
+              onValueChange={(value: "in" | "cm") => handleInputChange("distanceUnit", value)}
+            >
+              <SelectTrigger className="w-32">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -217,34 +184,64 @@ export function ParcelDetailsStep({ shipmentData, onUpdate, onNext, onPrev, isLo
               </SelectContent>
             </Select>
           </div>
-        </div>
-      </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <Label htmlFor="length">Length *</Label>
+              <Input
+                id="length"
+                type="number"
+                step="0.1"
+                min="0"
+                value={parcelData.length}
+                onChange={(e) => handleInputChange("length", e.target.value)}
+                placeholder="0.0"
+              />
+            </div>
+            <div>
+              <Label htmlFor="width">Width *</Label>
+              <Input
+                id="width"
+                type="number"
+                step="0.1"
+                min="0"
+                value={parcelData.width}
+                onChange={(e) => handleInputChange("width", e.target.value)}
+                placeholder="0.0"
+              />
+            </div>
+            <div>
+              <Label htmlFor="height">Height *</Label>
+              <Input
+                id="height"
+                type="number"
+                step="0.1"
+                min="0"
+                value={parcelData.height}
+                onChange={(e) => handleInputChange("height", e.target.value)}
+                placeholder="0.0"
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Weight */}
-      <div>
-        <h3 className="text-lg font-semibold flex items-center gap-2 mb-4">
-          <Weight className="h-5 w-5" />
-          Weight
-        </h3>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Weight className="h-5 w-5" />
+            Weight
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
           <div>
-            <Label htmlFor="weight">Weight *</Label>
-            <Input
-              id="weight"
-              type="number"
-              step="0.1"
-              min="0.1"
-              value={formData.weight}
-              onChange={(e) => handleInputChange("weight", e.target.value)}
-              placeholder="0.0"
-              className="mt-1"
-            />
-          </div>
-          <div>
-            <Label htmlFor="mass_unit">Unit</Label>
-            <Select value={formData.mass_unit} onValueChange={(value) => handleInputChange("mass_unit", value)}>
-              <SelectTrigger className="mt-1">
+            <Label>Unit</Label>
+            <Select
+              value={parcelData.massUnit}
+              onValueChange={(value: "oz" | "lb" | "g" | "kg") => handleInputChange("massUnit", value)}
+            >
+              <SelectTrigger className="w-32">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -255,41 +252,53 @@ export function ParcelDetailsStep({ shipmentData, onUpdate, onNext, onPrev, isLo
               </SelectContent>
             </Select>
           </div>
-        </div>
-      </div>
 
-      {/* Preview */}
-      {isValid && (
+          <div>
+            <Label htmlFor="weight">Weight *</Label>
+            <Input
+              id="weight"
+              type="number"
+              step="0.1"
+              min="0"
+              value={parcelData.weight}
+              onChange={(e) => handleInputChange("weight", e.target.value)}
+              placeholder="0.0"
+              className="w-48"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Summary */}
+      {isFormValid() && (
         <Card className="bg-muted/50">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Package className="h-4 w-4" />
-              Parcel Summary
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4 text-sm">
+          <CardContent className="p-4">
+            <h4 className="font-medium mb-2">Package Summary:</h4>
+            <div className="text-sm space-y-1">
               <div>
-                <strong>Dimensions:</strong> {formData.length}" × {formData.width}" × {formData.height}"
+                <strong>Dimensions:</strong> {parcelData.length} × {parcelData.width} × {parcelData.height}{" "}
+                {parcelData.distanceUnit}
               </div>
               <div>
-                <strong>Weight:</strong> {formData.weight} {formData.mass_unit}
+                <strong>Weight:</strong> {parcelData.weight} {parcelData.massUnit}
               </div>
-              <div>
-                <strong>Template:</strong> {PARCEL_TEMPLATES.find((t) => t.id === formData.parcel_template)?.name}
-              </div>
+              {parcelData.template !== "custom" && (
+                <div>
+                  <strong>Template:</strong> {PARCEL_TEMPLATES.find((t) => t.id === parcelData.template)?.name}
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
       )}
 
       {/* Navigation */}
-      <div className="flex justify-between pt-4">
+      <div className="flex justify-between">
         <Button variant="outline" onClick={onPrev} disabled={isLoading}>
           Previous
         </Button>
-        <Button onClick={handleSubmit} disabled={!isValid || isLoading}>
-          {isLoading ? "Saving..." : "Continue to Rates"}
+        <Button onClick={handleSubmit} disabled={!isFormValid() || isLoading}>
+          Continue to Shipping Rates
         </Button>
       </div>
     </div>

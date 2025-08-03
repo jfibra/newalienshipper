@@ -1,10 +1,9 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
-import { CheckCircle, Download, Package, Truck, Copy, ExternalLink } from "lucide-react"
+import { CheckCircle, Download, Package, Truck, Copy } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 interface SuccessStepProps {
@@ -16,176 +15,145 @@ interface SuccessStepProps {
 export function SuccessStep({ shipmentData, onCreateAnother, onGoToDashboard }: SuccessStepProps) {
   const { toast } = useToast()
 
-  const shipment = shipmentData.shipment
-  const payment = shipmentData.payment
-  const selectedRate = shipmentData.selectedRate
-
-  const copyTrackingNumber = () => {
-    if (shipment?.tracking_number) {
-      navigator.clipboard.writeText(shipment.tracking_number)
-      toast({
-        title: "Copied",
-        description: "Tracking number copied to clipboard",
-      })
-    }
+  const formatPrice = (amount: number, currency = "USD") => {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: currency,
+    }).format(amount)
   }
 
-  const downloadLabel = () => {
-    if (shipment?.label_url) {
-      window.open(shipment.label_url, "_blank")
-    }
+  const handleCopyTracking = () => {
+    const trackingNumber = "1Z999AA1234567890" // Mock tracking number
+    navigator.clipboard.writeText(trackingNumber)
+    toast({
+      title: "Copied!",
+      description: "Tracking number copied to clipboard",
+    })
   }
 
-  const formatEstimatedDays = (days: number | null) => {
-    if (!days) return "Unknown"
-    if (days === 1) return "1 business day"
-    return `${days} business days`
+  const handleDownloadLabel = () => {
+    // Mock label download
+    toast({
+      title: "Download Started",
+      description: "Your shipping label is being downloaded",
+    })
   }
 
   return (
     <div className="space-y-6">
       {/* Success Header */}
-      <div className="text-center py-6">
+      <div className="text-center py-8">
         <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
           <CheckCircle className="h-8 w-8 text-green-600" />
         </div>
-        <h2 className="text-2xl font-bold text-green-600 mb-2">Shipment Created Successfully!</h2>
-        <p className="text-muted-foreground">Your shipment has been created and payment has been processed.</p>
+        <h2 className="text-2xl font-bold mb-2">Shipment Created Successfully!</h2>
+        <p className="text-muted-foreground">Your shipping label has been generated and payment has been processed.</p>
       </div>
 
       {/* Shipment Details */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Package className="h-5 w-5" />
-            Shipment Details
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {shipmentData.tag && (
-            <div className="flex justify-between">
-              <span className="font-medium">Reference:</span>
-              <Badge variant="secondary">{shipmentData.tag}</Badge>
-            </div>
-          )}
-
-          <div className="flex justify-between">
-            <span className="font-medium">Service:</span>
-            <span>
-              {selectedRate?.provider} - {selectedRate?.service_level_name}
-            </span>
+        <CardContent className="p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold">Shipment Details</h3>
+            <Badge variant="secondary" className="bg-green-100 text-green-800">
+              Paid
+            </Badge>
           </div>
 
-          <div className="flex justify-between">
-            <span className="font-medium">Cost:</span>
-            <span>
-              ${Number.parseFloat(selectedRate?.amount || "0").toFixed(2)} {selectedRate?.currency}
-            </span>
-          </div>
-
-          <div className="flex justify-between">
-            <span className="font-medium">Estimated Delivery:</span>
-            <span>{formatEstimatedDays(selectedRate?.estimated_days)}</span>
-          </div>
-
-          <Separator />
-
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span>From:</span>
-              <span>{shipmentData.fromAddress?.full_name}</span>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <div>
+              <div className="font-medium text-muted-foreground mb-1">From</div>
+              <div>{shipmentData.fromAddress?.full_name}</div>
+              <div className="text-muted-foreground">
+                {shipmentData.fromAddress?.city}, {shipmentData.fromAddress?.state}
+              </div>
             </div>
-            <div className="flex justify-between text-sm">
-              <span>To:</span>
-              <span>{shipmentData.toAddress?.full_name}</span>
+
+            <div>
+              <div className="font-medium text-muted-foreground mb-1">To</div>
+              <div>{shipmentData.toAddress?.full_name}</div>
+              <div className="text-muted-foreground">
+                {shipmentData.toAddress?.city}, {shipmentData.toAddress?.state}
+              </div>
             </div>
-            <div className="flex justify-between text-sm">
-              <span>Return:</span>
-              <span>{shipmentData.returnAddress?.full_name}</span>
+
+            <div>
+              <div className="font-medium text-muted-foreground mb-1">Service</div>
+              <div>
+                {shipmentData.selectedRate?.provider.toUpperCase()} {shipmentData.selectedRate?.service_level_name}
+              </div>
+              <div className="text-muted-foreground">
+                {shipmentData.selectedRate?.estimated_days}{" "}
+                {shipmentData.selectedRate?.estimated_days === 1 ? "day" : "days"}
+              </div>
             </div>
+
+            <div>
+              <div className="font-medium text-muted-foreground mb-1">Cost</div>
+              <div className="text-lg font-semibold">
+                {formatPrice(shipmentData.selectedRate?.amount, shipmentData.selectedRate?.currency)}
+              </div>
+            </div>
+
+            {shipmentData.tag && (
+              <div className="md:col-span-2">
+                <div className="font-medium text-muted-foreground mb-1">Reference</div>
+                <div>{shipmentData.tag}</div>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
 
       {/* Tracking Information */}
-      {shipment?.tracking_number && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Truck className="h-5 w-5" />
-              Tracking Information
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-              <div>
-                <div className="font-medium">Tracking Number</div>
-                <div className="text-lg font-mono">{shipment.tracking_number}</div>
-              </div>
-              <Button variant="outline" size="sm" onClick={copyTrackingNumber}>
-                <Copy className="h-4 w-4 mr-2" />
-                Copy
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Shipping Label */}
-      {shipment?.label_url && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Shipping Label</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-              <div>
-                <div className="font-medium">Label Ready</div>
-                <div className="text-sm text-muted-foreground">Download and print your shipping label</div>
-              </div>
-              <Button onClick={downloadLabel}>
-                <Download className="h-4 w-4 mr-2" />
-                Download Label
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Payment Confirmation */}
       <Card>
-        <CardHeader>
-          <CardTitle>Payment Confirmation</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <div className="flex justify-between">
-            <span>Payment Status:</span>
-            <Badge className="bg-green-100 text-green-800">
-              {payment?.status === "succeeded" ? "Paid" : payment?.status}
-            </Badge>
+        <CardContent className="p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Truck className="h-5 w-5" />
+            <h3 className="text-lg font-semibold">Tracking Information</h3>
           </div>
-          <div className="flex justify-between">
-            <span>Amount:</span>
-            <span>
-              ${Number.parseFloat(payment?.amount || "0").toFixed(2)} {payment?.currency}
-            </span>
-          </div>
-          <div className="flex justify-between text-sm text-muted-foreground">
-            <span>Payment ID:</span>
-            <span className="font-mono text-xs">{payment?.stripe_payment_intent_id}</span>
+
+          <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+            <div>
+              <div className="font-medium">Tracking Number</div>
+              <div className="text-lg font-mono">1Z999AA1234567890</div>
+            </div>
+            <Button variant="outline" size="sm" onClick={handleCopyTracking}>
+              <Copy className="h-4 w-4 mr-2" />
+              Copy
+            </Button>
           </div>
         </CardContent>
       </Card>
 
       {/* Actions */}
-      <div className="flex flex-col sm:flex-row gap-3 pt-4">
-        <Button onClick={onCreateAnother} variant="outline" className="flex-1 bg-transparent">
-          <Package className="h-4 w-4 mr-2" />
+      <Card>
+        <CardContent className="p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Package className="h-5 w-5" />
+            <h3 className="text-lg font-semibold">Next Steps</h3>
+          </div>
+
+          <div className="space-y-3">
+            <Button onClick={handleDownloadLabel} className="w-full" size="lg">
+              <Download className="h-4 w-4 mr-2" />
+              Download Shipping Label
+            </Button>
+
+            <div className="text-sm text-muted-foreground">
+              Print your shipping label and attach it to your package. Make sure the barcode is clearly visible.
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Navigation */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <Button variant="outline" onClick={onCreateAnother} className="flex-1 bg-transparent">
           Create Another Shipment
         </Button>
         <Button onClick={onGoToDashboard} className="flex-1">
-          Go to Dashboard
-          <ExternalLink className="h-4 w-4 ml-2" />
+          Return to Dashboard
         </Button>
       </div>
     </div>

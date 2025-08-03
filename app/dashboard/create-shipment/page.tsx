@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
-import { CheckCircle, Package, MapPin, CreditCard, FileText, ArrowLeft, ArrowRight } from "lucide-react"
+import { CheckCircle, Package, MapPin, CreditCard, FileText, ArrowLeft, ArrowRight, AlertCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { supabase } from "@/lib/supabase"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
 // Step Components
 import { AddressSelectionStep } from "@/components/shipment/address-selection-step"
@@ -56,20 +57,54 @@ export default function CreateShipment() {
   const { toast } = useToast()
 
   const [currentStep, setCurrentStep] = useState(1)
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const [shipmentData, setShipmentData] = useState<ShipmentData>({})
   const [user, setUser] = useState<any>(null)
+  const [hasPaymentMethod, setHasPaymentMethod] = useState(false)
+  const [checkingPayment, setCheckingPayment] = useState(true)
 
-  // Get current user
+  // Get current user and check payment methods
   useEffect(() => {
-    const getUser = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      setUser(user)
+    const initializeUser = async () => {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+
+        if (!user) {
+          router.push("/login")
+          return
+        }
+
+        setUser(user)
+
+        // Check if user has payment methods
+        const { data: paymentMethods, error } = await supabase
+          .from("payment_methods")
+          .select("id")
+          .eq("user_id", user.id)
+          .limit(1)
+
+        if (error) {
+          console.error("Error checking payment methods:", error)
+        }
+
+        setHasPaymentMethod((paymentMethods?.length || 0) > 0)
+      } catch (error) {
+        console.error("Error initializing user:", error)
+        toast({
+          title: "Error",
+          description: "Failed to load user data",
+          variant: "destructive",
+        })
+      } finally {
+        setCheckingPayment(false)
+        setIsLoading(false)
+      }
     }
-    getUser()
-  }, [])
+
+    initializeUser()
+  }, [router, toast])
 
   const updateShipmentData = (data: Partial<ShipmentData>) => {
     setShipmentData((prev) => ({ ...prev, ...data }))
@@ -100,6 +135,10 @@ export default function CreateShipment() {
       default:
         return false
     }
+  }
+
+  const handleAddPaymentMethod = () => {
+    router.push("/dashboard/billing?tab=payment-methods&action=add")
   }
 
   const renderStepContent = () => {
@@ -164,6 +203,78 @@ export default function CreateShipment() {
   }
 
   const progressPercentage = (currentStep / STEPS.length) * 100
+
+  // Show loading while checking payment methods
+  if (checkingPayment) {
+    return (
+      <div className="container mx-auto px-4 py-8 max-w-4xl">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+            <p className="text-muted-foreground">Loading...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Show payment method required message
+  if (!hasPaymentMethod) {
+    return (
+      <div className="container mx-auto px-4 py-8 max-w-4xl">
+        {/* Header */}
+        <div className="mb-8">
+          <div className="flex items-center gap-2 mb-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => router.push("/dashboard")}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="h-4 w-4 mr-1" />
+              Back to Dashboard
+            </Button>
+          </div>
+          <h1 className="text-3xl font-bold">Create Shipment</h1>
+        </div>
+
+        {/* Payment Method Required */}
+        <Card>
+          <CardContent className="p-8 text-center">
+            <div className="mb-6">
+              <div className="mx-auto w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mb-4">
+                <CreditCard className="h-8 w-8 text-orange-600" />
+              </div>
+              <h2 className="text-2xl font-semibold mb-2">Payment Method Required</h2>
+              <p className="text-muted-foreground max-w-md mx-auto">
+                Before you can create shipments, you need to add a payment method to your account. This ensures smooth
+                processing of your shipping labels.
+              </p>
+            </div>
+
+            <Alert className="max-w-md mx-auto mb-6">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Your payment method will only be charged when you purchase shipping labels.
+              </AlertDescription>
+            </Alert>
+
+            <div className="space-y-3">
+              <Button onClick={handleAddPaymentMethod} size="lg" className="w-full max-w-xs">
+                <CreditCard className="h-4 w-4 mr-2" />
+                Add Payment Method
+              </Button>
+              <div>
+                <Button variant="ghost" onClick={() => router.push("/dashboard")} className="text-muted-foreground">
+                  Return to Dashboard
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl">
@@ -245,8 +356,8 @@ export default function CreateShipment() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             {(() => {
-              const Icon = STEPS[currentStep - 1].icon;
-              return <Icon className="h-5 w-5" />;
+              const Icon = STEPS[currentStep - 1].icon
+              return <Icon className="h-5 w-5" />
             })()}
             {STEPS[currentStep - 1].title}
           </CardTitle>
