@@ -139,69 +139,7 @@ export function AddressSelectionStep({ user, shipmentData, onUpdate, onNext, isL
     }
   }
 
-  const renderAddressCard = (
-    address: ShippingAddress | RecipientAddress,
-    type: "from" | "to" | "return",
-    isSelected: boolean,
-  ) => {
-    const isShipping = "address_line1" in address
-    const street = isShipping ? address.address_line1 : (address as RecipientAddress).street1
-    const street2 = isShipping ? address.address_line2 : (address as RecipientAddress).street2
-
-    return (
-      <Card
-        key={address.id}
-        className={`cursor-pointer transition-all hover:shadow-md ${
-          isSelected ? "ring-2 ring-primary bg-primary/5" : ""
-        }`}
-        onClick={() => handleAddressSelect(type, address)}
-      >
-        <CardContent className="p-4">
-          <div className="flex items-start justify-between mb-2">
-            <div className="flex items-center gap-2">
-              {address.address_type === "commercial" ? (
-                <Building className="h-4 w-4 text-muted-foreground" />
-              ) : (
-                <Home className="h-4 w-4 text-muted-foreground" />
-              )}
-              <span className="font-medium">{address.full_name}</span>
-            </div>
-            {address.is_default && (
-              <Badge variant="secondary" className="text-xs">
-                Default
-              </Badge>
-            )}
-          </div>
-
-          <div className="text-sm text-muted-foreground space-y-1">
-            <div>{street}</div>
-            {street2 && <div>{street2}</div>}
-            <div>
-              {address.city}, {address.state} {address.postal_code}
-            </div>
-            <div>{address.country}</div>
-          </div>
-
-          {address.company && (
-            <div className="text-sm text-muted-foreground mt-2">
-              <strong>Company:</strong> {address.company}
-            </div>
-          )}
-
-          <div className="flex gap-2 mt-2">
-            <Badge variant="outline" className="text-xs">
-              {address.address_type}
-            </Badge>
-            {isShipping && (
-              <Badge variant="outline" className="text-xs">
-                {(address as ShippingAddress).usage_type}
-              </Badge>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
+  // Remove renderAddressCard, will use dropdowns instead
 
   const canProceed = shipmentData.fromAddress && shipmentData.toAddress
 
@@ -223,88 +161,95 @@ export function AddressSelectionStep({ user, shipmentData, onUpdate, onNext, isL
         <p className="text-sm text-muted-foreground mt-1">Add a custom reference to help you identify this shipment</p>
       </div>
 
-      {/* From Address */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold flex items-center gap-2">
-            <MapPin className="h-5 w-5" />
-            From Address
-          </h3>
-          <Button variant="outline" size="sm" onClick={() => handleAddNewAddress("from")}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add New
-          </Button>
+      {/* Grouped Shipping From & Return Address */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Shipping From Address */}
+        <div>
+          <Label htmlFor="fromAddress">Shipping From Address</Label>
+          {shipmentData.fromAddress ? (
+            <div className="flex items-center gap-2 mt-2">
+              <span>{shipmentData.fromAddress.full_name}</span>
+              <Button size="sm" variant="outline" onClick={() => onUpdate({ fromAddress: undefined })}>
+                Change
+              </Button>
+            </div>
+          ) : (
+            <select
+              id="fromAddress"
+              className="mt-2 w-full border rounded p-2"
+              value={shipmentData.fromAddress?.id || ""}
+              onChange={e => {
+                const selected = shippingAddresses.find(addr => addr.id === e.target.value)
+                if (selected) onUpdate({ fromAddress: selected })
+              }}
+            >
+              <option value="">Select from your saved addresses</option>
+              {shippingAddresses.map(addr => (
+                <option key={addr.id} value={addr.id}>{addr.full_name} - {addr.address_line1}</option>
+              ))}
+            </select>
+          )}
         </div>
-
-        <div className="grid gap-3 md:grid-cols-2">
-          {shippingAddresses.map((address) =>
-            renderAddressCard(address, "from", shipmentData.fromAddress?.id === address.id),
+        {/* Return Address */}
+        <div>
+          <Label htmlFor="returnAddress">Return Address</Label>
+          {shipmentData.returnAddress ? (
+            <div className="flex items-center gap-2 mt-2">
+              <span>{shipmentData.returnAddress.full_name}</span>
+              <Button size="sm" variant="outline" onClick={() => onUpdate({ returnAddress: undefined })}>
+                Change
+              </Button>
+            </div>
+          ) : (
+            <select
+              id="returnAddress"
+              className="mt-2 w-full border rounded p-2"
+              value={shipmentData.returnAddress?.id || ""}
+              onChange={e => {
+                const selected = shippingAddresses.find(addr => addr.id === e.target.value)
+                if (selected) onUpdate({ returnAddress: selected })
+              }}
+            >
+              <option value="">Select from your saved addresses</option>
+              {shippingAddresses.map(addr => (
+                <option key={addr.id} value={addr.id}>{addr.full_name} - {addr.address_line1}</option>
+              ))}
+            </select>
           )}
         </div>
       </div>
 
-      {/* To Address */}
+      {/* To Address (Recipient) */}
       <div>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold flex items-center gap-2">
-            <MapPin className="h-5 w-5" />
-            To Address
-          </h3>
-          <Button variant="outline" size="sm" onClick={() => handleAddNewAddress("to")}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add New
-          </Button>
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-2">
-          {recipientAddresses.map((address) =>
-            renderAddressCard(address, "to", shipmentData.toAddress?.id === address.id),
-          )}
-        </div>
+        <Label htmlFor="toAddress">Recipient Address</Label>
+        {shipmentData.toAddress ? (
+          <div className="flex items-center gap-2 mt-2">
+            <span>{shipmentData.toAddress.full_name}</span>
+            <Button size="sm" variant="outline" onClick={() => onUpdate({ toAddress: undefined })}>
+              Change
+            </Button>
+          </div>
+        ) : (
+          <select
+            id="toAddress"
+            className="mt-2 w-full border rounded p-2"
+            value={shipmentData.toAddress?.id || ""}
+            onChange={e => {
+              const selected = recipientAddresses.find(addr => addr.id === e.target.value)
+              if (selected) onUpdate({ toAddress: selected })
+            }}
+          >
+            <option value="">Select from your saved recipient addresses</option>
+            {recipientAddresses.map(addr => (
+              <option key={addr.id} value={addr.id}>{addr.full_name} - {addr.street1}</option>
+            ))}
+          </select>
+        )}
       </div>
-
-      {/* Return Address */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold flex items-center gap-2">
-            <MapPin className="h-5 w-5" />
-            Return Address
-          </h3>
-          <Button variant="outline" size="sm" onClick={() => handleAddNewAddress("return")}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add New
-          </Button>
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-2">
-          {shippingAddresses.map((address) =>
-            renderAddressCard(address, "return", shipmentData.returnAddress?.id === address.id),
-          )}
-        </div>
-      </div>
-
-      {/* Address Form Dialog */}
-      <Dialog open={isAddressDialogOpen} onOpenChange={setIsAddressDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              Add New {addressDialogType === "from" || addressDialogType === "return" ? "Shipping" : "Recipient"}{" "}
-              Address
-            </DialogTitle>
-          </DialogHeader>
-          <AddressForm
-            type={addressDialogType === "to" ? "recipient" : "shipping"}
-            countries={countries}
-            onSubmit={handleAddressSubmit}
-            onCancel={() => setIsAddressDialogOpen(false)}
-            isLoading={isLoading}
-          />
-        </DialogContent>
-      </Dialog>
 
       {/* Summary */}
       {canProceed && (
-        <Card className="bg-muted/50">
+        <Card className="bg-muted/50 mt-6">
           <CardContent className="p-4">
             <h4 className="font-medium mb-2">Selected Addresses:</h4>
             <div className="text-sm space-y-1">

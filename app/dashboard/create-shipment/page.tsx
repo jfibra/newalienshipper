@@ -244,7 +244,10 @@ export default function CreateShipment() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            {STEPS[currentStep - 1].icon({ className: "h-5 w-5" })}
+            {(() => {
+              const Icon = STEPS[currentStep - 1].icon;
+              return <Icon className="h-5 w-5" />;
+            })()}
             {STEPS[currentStep - 1].title}
           </CardTitle>
         </CardHeader>
