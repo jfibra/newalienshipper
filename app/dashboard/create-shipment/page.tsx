@@ -366,19 +366,17 @@ export default function CreateShipment() {
       </Card>
 
       {/* Navigation Buttons */}
-      {currentStep < 5 && (
-        <div className="flex justify-between mt-6">
-          <Button variant="outline" onClick={prevStep} disabled={currentStep === 1 || isLoading}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Previous
-          </Button>
-
-          <Button onClick={nextStep} disabled={!canProceedToNextStep() || isLoading}>
-            Next
-            <ArrowRight className="h-4 w-4 ml-2" />
-          </Button>
-        </div>
-      )}
+      <div className="flex justify-between mt-8">
+        <Button variant="outline" onClick={prevStep} disabled={currentStep === 1 || isLoading}>
+          Previous
+        </Button>
+        <Button
+          onClick={nextStep}
+          disabled={!canProceedToNextStep() || isLoading || currentStep === STEPS.length}
+        >
+          Next
+        </Button>
+      </div>
     </div>
   )
 }

@@ -96,7 +96,7 @@ export function ParcelDetailsStep({ shipmentData, onUpdate, onNext, onPrev, isLo
         return
       }
 
-      // Create parcel object
+      // Create parcel object (fields must match what ShippingRatesStep expects)
       const parcel = {
         id: crypto.randomUUID(),
         length: Number.parseFloat(parcelData.length),
@@ -114,7 +114,18 @@ export function ParcelDetailsStep({ shipmentData, onUpdate, onNext, onPrev, isLo
 
       if (error) throw error
 
-      onUpdate({ parcel: data })
+      // Pass the correct fields for rate calculation (not just DB record)
+      onUpdate({
+        parcel: {
+          length: parcel.length,
+          width: parcel.width,
+          height: parcel.height,
+          weight: parcel.weight,
+          distance_unit: parcel.distance_unit,
+          mass_unit: parcel.mass_unit,
+          parcel_template: parcel.parcel_template,
+        },
+      })
       onNext()
     } catch (error) {
       console.error("Error saving parcel:", error)

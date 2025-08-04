@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { AddressAutocomplete } from "@/components/address-autocomplete"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -11,6 +12,7 @@ import { Separator } from "@/components/ui/separator"
 import { MapPin, Search, User } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
+import Swal from "sweetalert2"
 import type { RecipientAddress, ShippingAddress, Country } from "@/lib/types/address"
 
 interface AddressSelectionStepProps {
@@ -37,6 +39,13 @@ interface AddressFormData {
   fromPostalCode: string
   useAsReturn: boolean
 
+  // Return Address (if not useAsReturn)
+  returnStreet1?: string
+  returnStreet2?: string
+  returnCity?: string
+  returnState?: string
+  returnPostalCode?: string
+
   // Recipient Info
   recipientName: string
   recipientEmail: string
@@ -52,6 +61,7 @@ interface AddressFormData {
   toState: string
   toPostalCode: string
   isResidential: boolean
+  addressType?: string
 
   // Optional tag
   tag: string
@@ -65,32 +75,32 @@ export function AddressSelectionStep({ user, shipmentData, onUpdate, onNext, isL
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedRecipient, setSelectedRecipient] = useState<RecipientAddress | null>(null)
 
-  const [formData, setFormData] = useState<AddressFormData>({
-    senderName: "",
-    senderEmail: "",
-    senderCompany: "",
-    senderPhone: "",
-    fromCountry: "US",
-    fromStreet1: "",
-    fromStreet2: "",
-    fromCity: "",
-    fromState: "",
-    fromPostalCode: "",
+  const [formData, setFormData] = useState<AddressFormData>(() => ({
+    senderName: shipmentData.fromAddress?.full_name || "",
+    senderEmail: shipmentData.fromAddress?.email || "",
+    senderCompany: shipmentData.fromAddress?.company || "",
+    senderPhone: shipmentData.fromAddress?.phone || "",
+    fromCountry: shipmentData.fromAddress?.country_code || "US",
+    fromStreet1: shipmentData.fromAddress?.address_line1 || "",
+    fromStreet2: shipmentData.fromAddress?.address_line2 || "",
+    fromCity: shipmentData.fromAddress?.city || "",
+    fromState: shipmentData.fromAddress?.state || "",
+    fromPostalCode: shipmentData.fromAddress?.postal_code || "",
     useAsReturn: true,
-    recipientName: "",
-    recipientEmail: "",
-    recipientCompany: "",
-    recipientPhone: "",
+    recipientName: shipmentData.toAddress?.full_name || "",
+    recipientEmail: shipmentData.toAddress?.email || "",
+    recipientCompany: shipmentData.toAddress?.company || "",
+    recipientPhone: shipmentData.toAddress?.phone_number || "",
     saveRecipient: false,
-    toCountry: "US",
-    toStreet1: "",
-    toStreet2: "",
-    toCity: "",
-    toState: "",
-    toPostalCode: "",
-    isResidential: true,
+    toCountry: shipmentData.toAddress?.country_code || "US",
+    toStreet1: shipmentData.toAddress?.street1 || "",
+    toStreet2: shipmentData.toAddress?.street2 || "",
+    toCity: shipmentData.toAddress?.city || "",
+    toState: shipmentData.toAddress?.state || "",
+    toPostalCode: shipmentData.toAddress?.postal_code || "",
+    isResidential: shipmentData.toAddress?.address_type === "residential" || true,
     tag: shipmentData.tag || "",
-  })
+  }))
 
   useEffect(() => {
     if (user) {
@@ -178,6 +188,48 @@ export function AddressSelectionStep({ user, shipmentData, onUpdate, onNext, isL
     setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
+  // Handle autofill from dropdown for sender
+  const handleSenderDropdown = (id: string) => {
+    const selected = savedShippingAddresses.find(addr => addr.id === id)
+    if (selected) {
+      setFormData(prev => ({
+        ...prev,
+        senderName: selected.full_name,
+        senderEmail: selected.email || "",
+        senderCompany: selected.company || "",
+        senderPhone: selected.phone || "",
+        fromCountry: selected.country_code,
+        fromStreet1: selected.address_line1,
+        fromStreet2: selected.address_line2 || "",
+        fromCity: selected.city,
+        fromState: selected.state,
+        fromPostalCode: selected.postal_code,
+      }))
+    }
+  }
+
+  // Handle autofill from dropdown for recipient
+  const handleRecipientDropdown = (id: string) => {
+    const selected = savedRecipients.find(addr => addr.id === id)
+    if (selected) {
+      setFormData(prev => ({
+        ...prev,
+        recipientName: selected.full_name,
+        recipientEmail: selected.email || "",
+        recipientCompany: selected.company || "",
+        recipientPhone: selected.phone_number || "",
+        toCountry: selected.country_code,
+        toStreet1: selected.street1,
+        toStreet2: selected.street2 || "",
+        toCity: selected.city,
+        toState: selected.state,
+        toPostalCode: selected.postal_code,
+        isResidential: selected.address_type === "residential",
+        addressType: selected.address_type || "residential"
+      }))
+    }
+  }
+
   const handleRecipientSelect = (recipient: RecipientAddress) => {
     setSelectedRecipient(recipient)
     setFormData((prev) => ({
@@ -205,77 +257,151 @@ export function AddressSelectionStep({ user, shipmentData, onUpdate, onNext, isL
 
   const handleSubmit = async () => {
     try {
-      // Create from address object
-      const fromAddress: ShippingAddress = {
-        id: crypto.randomUUID(),
-        user_id: user.id,
-        full_name: formData.senderName,
-        email: formData.senderEmail,
-        phone: formData.senderPhone,
-        company: formData.senderCompany,
-        address_line1: formData.fromStreet1,
-        address_line2: formData.fromStreet2,
-        city: formData.fromCity,
-        state: formData.fromState,
-        postal_code: formData.fromPostalCode,
-        country: countries.find((c) => c.code === formData.fromCountry)?.name || "United States",
-        country_code: formData.fromCountry,
-        address_type: "commercial",
-        usage_type: "shipping",
+      // Helper: check for duplicate address in a table
+      type Field = { key: string; value: string | undefined }
+      const findDuplicate = async (table: string, fields: Field[]) => {
+        let query = supabase.from(table).select("*").eq("user_id", user.id)
+        for (const field of fields) {
+          query = query.eq(field.key, field.value)
+        }
+        const { data, error } = await query
+        if (error) return null
+        return data && data.length > 0 ? data[0] : null
       }
 
-      // Create to address object
-      const toAddress: RecipientAddress = {
-        id: crypto.randomUUID(),
-        user_id: user.id,
-        full_name: formData.recipientName,
-        email: formData.recipientEmail,
-        phone_number: formData.recipientPhone,
-        company: formData.recipientCompany,
-        street1: formData.toStreet1,
-        street2: formData.toStreet2,
-        city: formData.toCity,
-        state: formData.toState,
-        postal_code: formData.toPostalCode,
-        country: countries.find((c) => c.code === formData.toCountry)?.name || "United States",
-        country_code: formData.toCountry,
-        address_type: formData.isResidential ? "residential" : "commercial",
+      // Prepare sender (from) address fields for duplicate check
+      const fromFields = [
+        { key: "full_name", value: formData.senderName },
+        { key: "email", value: formData.senderEmail },
+        { key: "phone", value: formData.senderPhone },
+        { key: "company", value: formData.senderCompany },
+        { key: "address_line1", value: formData.fromStreet1 },
+        { key: "city", value: formData.fromCity },
+        { key: "state", value: formData.fromState },
+        { key: "postal_code", value: formData.fromPostalCode },
+      ]
+      let fromAddress = null
+      fromAddress = await findDuplicate("shipping_addresses", fromFields)
+      if (!fromAddress) {
+        // Insert new sender address
+        const { data, error } = await supabase
+          .from("shipping_addresses")
+          .insert([
+            {
+              user_id: user.id,
+              full_name: formData.senderName,
+              email: formData.senderEmail,
+              phone: formData.senderPhone,
+              company: formData.senderCompany,
+              address_line1: formData.fromStreet1,
+              address_line2: formData.fromStreet2,
+              city: formData.fromCity,
+              state: formData.fromState,
+              postal_code: formData.fromPostalCode,
+              country: countries.find((c) => c.code === formData.fromCountry)?.name || "United States",
+              country_code: formData.fromCountry,
+              address_type: "commercial",
+              usage_type: "shipping",
+            },
+          ])
+          .select()
+          .single()
+        if (error) throw error
+        fromAddress = data
+        toast({ title: "Sender address saved!", description: "Your sender address was saved to your address book." })
+      } else {
+        toast({ title: "Sender address matched!", description: "Using your saved sender address." })
       }
 
-      // Return address (same as from if useAsReturn is checked)
-      const returnAddress = formData.useAsReturn ? fromAddress : fromAddress
+      // Prepare recipient (to) address fields for duplicate check
+      const toFields = [
+        { key: "full_name", value: formData.recipientName },
+        { key: "email", value: formData.recipientEmail },
+        { key: "phone_number", value: formData.recipientPhone },
+        { key: "company", value: formData.recipientCompany },
+        { key: "street1", value: formData.toStreet1 },
+        { key: "city", value: formData.toCity },
+        { key: "state", value: formData.toState },
+        { key: "postal_code", value: formData.toPostalCode },
+      ]
+      let toAddress = null
+      toAddress = await findDuplicate("recipient_addresses", toFields)
+      if (!toAddress) {
+        // Insert new recipient address
+        const { data, error } = await supabase
+          .from("recipient_addresses")
+          .insert([
+            {
+              user_id: user.id,
+              full_name: formData.recipientName,
+              email: formData.recipientEmail,
+              phone_number: formData.recipientPhone,
+              company: formData.recipientCompany,
+              street1: formData.toStreet1,
+              street2: formData.toStreet2,
+              city: formData.toCity,
+              state: formData.toState,
+              postal_code: formData.toPostalCode,
+              country: countries.find((c) => c.code === formData.toCountry)?.name || "United States",
+              country_code: formData.toCountry,
+              address_type: formData.isResidential ? "residential" : "commercial",
+            },
+          ])
+          .select()
+          .single()
+        if (error) throw error
+        toAddress = data
+        toast({ title: "Recipient address saved!", description: "Your recipient address was saved to your address book." })
+      } else {
+        toast({ title: "Recipient address matched!", description: "Using your saved recipient address." })
+      }
 
-      // Save recipient if requested and not already saved
-      if (formData.saveRecipient && !selectedRecipient) {
-        try {
+      // Handle return address if entered separately (not useAsReturn)
+      let returnAddress = fromAddress
+      if (!formData.useAsReturn && formData.returnStreet1) {
+        // Check for duplicate in recipient_addresses with usage_type 'return'
+        const returnFields = [
+          { key: "full_name", value: formData.senderName },
+          { key: "email", value: formData.senderEmail },
+          { key: "phone_number", value: formData.senderPhone },
+          { key: "company", value: formData.senderCompany },
+          { key: "street1", value: formData.returnStreet1 },
+          { key: "city", value: formData.returnCity },
+          { key: "state", value: formData.returnState },
+          { key: "postal_code", value: formData.returnPostalCode },
+        ]
+        let returnRecipient = await findDuplicate("recipient_addresses", returnFields)
+        if (!returnRecipient) {
+          // Insert as recipient address with usage_type 'return'
           const { data, error } = await supabase
             .from("recipient_addresses")
             .insert([
               {
                 user_id: user.id,
-                full_name: formData.recipientName,
-                email: formData.recipientEmail,
-                phone_number: formData.recipientPhone,
-                company: formData.recipientCompany,
-                street1: formData.toStreet1,
-                street2: formData.toStreet2,
-                city: formData.toCity,
-                state: formData.toState,
-                postal_code: formData.toPostalCode,
-                country: countries.find((c) => c.code === formData.toCountry)?.name || "United States",
-                country_code: formData.toCountry,
-                address_type: formData.isResidential ? "residential" : "commercial",
+                full_name: formData.senderName,
+                email: formData.senderEmail,
+                phone_number: formData.senderPhone,
+                company: formData.senderCompany,
+                street1: formData.returnStreet1,
+                street2: formData.returnStreet2,
+                city: formData.returnCity,
+                state: formData.returnState,
+                postal_code: formData.returnPostalCode,
+                country: countries.find((c) => c.code === formData.fromCountry)?.name || "United States",
+                country_code: formData.fromCountry,
+                address_type: "commercial",
+                usage_type: "return",
               },
             ])
             .select()
             .single()
-
-          if (!error && data) {
-            toAddress.id = data.id
-          }
-        } catch (error) {
-          console.error("Error saving recipient:", error)
+          if (error) throw error
+          returnRecipient = data
+          toast({ title: "Return address saved!", description: "Your return address was saved to your address book." })
+        } else {
+          toast({ title: "Return address matched!", description: "Using your saved return address." })
         }
+        returnAddress = returnRecipient
       }
 
       onUpdate({
@@ -283,6 +409,15 @@ export function AddressSelectionStep({ user, shipmentData, onUpdate, onNext, isL
         toAddress,
         returnAddress,
         tag: formData.tag,
+      })
+
+      // SweetAlert2 confirmation
+      await Swal.fire({
+        icon: "success",
+        title: "Addresses Confirmed",
+        text: "You have confirmed the addresses above are correct. We will save this information for your shipment.",
+        confirmButtonText: "Continue",
+        customClass: { popup: "max-w-md" },
       })
 
       onNext()
@@ -397,15 +532,28 @@ export function AddressSelectionStep({ user, shipmentData, onUpdate, onNext, isL
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="fromStreet1">Street *</Label>
-                  <Input
-                    id="fromStreet1"
-                    value={formData.fromStreet1}
-                    onChange={(e) => handleInputChange("fromStreet1", e.target.value)}
-                    placeholder="Street address"
-                  />
-                </div>
+              <div>
+                <Label htmlFor="fromStreet1">Street *</Label>
+                <AddressAutocomplete
+                  value={formData.fromStreet1}
+                  onChange={val => handleInputChange("fromStreet1", val)}
+                  onSelect={suggestion => {
+                    if (suggestion && suggestion.address) {
+                      const street = [suggestion.address.house_number, suggestion.address.road].filter(Boolean).join(" ");
+                      handleInputChange("fromStreet1", street);
+                      if (suggestion.address.city) handleInputChange("fromCity", suggestion.address.city);
+                      if (suggestion.address.state) handleInputChange("fromState", suggestion.address.state);
+                      if (suggestion.address.postcode) handleInputChange("fromPostalCode", suggestion.address.postcode);
+                      if (suggestion.address.country_code) handleInputChange("fromCountry", suggestion.address.country_code.toUpperCase());
+                    } else if (typeof suggestion === "string") {
+                      handleInputChange("fromStreet1", suggestion);
+                    } else if (suggestion && suggestion.display_name) {
+                      handleInputChange("fromStreet1", suggestion.display_name);
+                    }
+                  }}
+                  placeholder="Street address"
+                />
+              </div>
                 <div>
                   <Label htmlFor="fromStreet2">Street (line 2)</Label>
                   <Input
@@ -447,14 +595,83 @@ export function AddressSelectionStep({ user, shipmentData, onUpdate, onNext, isL
                 </div>
               </div>
 
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="useAsReturn"
-                  checked={formData.useAsReturn}
-                  onCheckedChange={(checked) => handleInputChange("useAsReturn", checked as boolean)}
-                />
-                <Label htmlFor="useAsReturn">Use as return address</Label>
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="useAsReturn"
+              checked={formData.useAsReturn}
+              onCheckedChange={(checked) => handleInputChange("useAsReturn", checked as boolean)}
+            />
+            <Label htmlFor="useAsReturn">Use as return address</Label>
+          </div>
+
+          {/* Show return address form if unchecked */}
+          {!formData.useAsReturn && (
+            <div className="mt-6 p-4 border rounded">
+              <h4 className="font-medium mb-3">Return Address</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="returnStreet1">Street *</Label>
+                  <AddressAutocomplete
+                    value={formData.returnStreet1 || ""}
+                    onChange={val => handleInputChange("returnStreet1", val)}
+                    onSelect={suggestion => {
+                      if (suggestion && suggestion.address) {
+                        const street = [suggestion.address.house_number, suggestion.address.road].filter(Boolean).join(" ");
+                        handleInputChange("returnStreet1", street);
+                        if (suggestion.address.city) handleInputChange("returnCity", suggestion.address.city);
+                        if (suggestion.address.state) handleInputChange("returnState", suggestion.address.state);
+                        if (suggestion.address.postcode) handleInputChange("returnPostalCode", suggestion.address.postcode);
+                        if (suggestion.address.country_code) handleInputChange("fromCountry", suggestion.address.country_code.toUpperCase());
+                      } else if (typeof suggestion === "string") {
+                        handleInputChange("returnStreet1", suggestion);
+                      } else if (suggestion && suggestion.display_name) {
+                        handleInputChange("returnStreet1", suggestion.display_name);
+                      }
+                    }}
+                    placeholder="Street address"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="returnStreet2">Street (line 2)</Label>
+                  <Input
+                    id="returnStreet2"
+                    value={formData.returnStreet2 || ""}
+                    onChange={e => handleInputChange("returnStreet2", e.target.value)}
+                    placeholder="Apt, suite, etc."
+                  />
+                </div>
               </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
+                <div>
+                  <Label htmlFor="returnCity">City *</Label>
+                  <Input
+                    id="returnCity"
+                    value={formData.returnCity || ""}
+                    onChange={e => handleInputChange("returnCity", e.target.value)}
+                    placeholder="City"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="returnState">State *</Label>
+                  <Input
+                    id="returnState"
+                    value={formData.returnState || ""}
+                    onChange={e => handleInputChange("returnState", e.target.value)}
+                    placeholder="State"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="returnPostalCode">Postal Code / ZIP *</Label>
+                  <Input
+                    id="returnPostalCode"
+                    value={formData.returnPostalCode || ""}
+                    onChange={e => handleInputChange("returnPostalCode", e.target.value)}
+                    placeholder="ZIP code"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
             </div>
           </div>
         </CardContent>
@@ -469,31 +686,24 @@ export function AddressSelectionStep({ user, shipmentData, onUpdate, onNext, isL
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Search Saved Recipients */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search saved recipients"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
-            {searchQuery && filteredRecipients.length > 0 && (
-              <div className="absolute z-10 w-full mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-y-auto">
-                {filteredRecipients.map((recipient) => (
-                  <div
-                    key={recipient.id}
-                    className="p-3 hover:bg-muted cursor-pointer border-b last:border-b-0"
-                    onClick={() => handleRecipientSelect(recipient)}
-                  >
-                    <div className="font-medium">{recipient.full_name}</div>
-                    <div className="text-sm text-muted-foreground">
-                      {recipient.street1}, {recipient.city}, {recipient.state}
-                    </div>
-                  </div>
+          {/* Recipient Dropdown */}
+          <div>
+            <Label htmlFor="recipientDropdown">Select Saved Recipient</Label>
+            <Select
+              value={selectedRecipient?.id || ""}
+              onValueChange={handleRecipientDropdown}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Choose a saved recipient" />
+              </SelectTrigger>
+              <SelectContent>
+                {savedRecipients.map((recipient) => (
+                  <SelectItem key={recipient.id ?? ''} value={recipient.id ?? ''}>
+                    {recipient.full_name} - {recipient.street1}
+                  </SelectItem>
                 ))}
-              </div>
-            )}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="flex items-center space-x-2">
@@ -574,10 +784,23 @@ export function AddressSelectionStep({ user, shipmentData, onUpdate, onNext, isL
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="toStreet1">Street *</Label>
-                  <Input
-                    id="toStreet1"
+                  <AddressAutocomplete
                     value={formData.toStreet1}
-                    onChange={(e) => handleInputChange("toStreet1", e.target.value)}
+                    onChange={val => handleInputChange("toStreet1", val)}
+                    onSelect={suggestion => {
+                      if (suggestion && suggestion.address) {
+                        const street = [suggestion.address.house_number, suggestion.address.road].filter(Boolean).join(" ");
+                        handleInputChange("toStreet1", street);
+                        if (suggestion.address.city) handleInputChange("toCity", suggestion.address.city);
+                        if (suggestion.address.state) handleInputChange("toState", suggestion.address.state);
+                        if (suggestion.address.postcode) handleInputChange("toPostalCode", suggestion.address.postcode);
+                        if (suggestion.address.country_code) handleInputChange("toCountry", suggestion.address.country_code.toUpperCase());
+                      } else if (typeof suggestion === "string") {
+                        handleInputChange("toStreet1", suggestion);
+                      } else if (suggestion && suggestion.display_name) {
+                        handleInputChange("toStreet1", suggestion.display_name);
+                      }
+                    }}
                     placeholder="Street address"
                   />
                 </div>
@@ -622,13 +845,20 @@ export function AddressSelectionStep({ user, shipmentData, onUpdate, onNext, isL
                 </div>
               </div>
 
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="isResidential"
-                  checked={formData.isResidential}
-                  onCheckedChange={(checked) => handleInputChange("isResidential", checked as boolean)}
-                />
-                <Label htmlFor="isResidential">This is a residential address</Label>
+              <div>
+                <Label htmlFor="addressType">Address Type</Label>
+                <Select
+                  value={formData.addressType || (formData.isResidential ? "residential" : "commercial")}
+                  onValueChange={val => handleInputChange("addressType", val)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select address type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="residential">Residential</SelectItem>
+                    <SelectItem value="commercial">Commercial</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </div>
