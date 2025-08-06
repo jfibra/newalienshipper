@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Truck, Clock } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { debugRates } from "@/lib/debug-rates"
 
 interface ShippingRatesStepProps {
   shipmentData: any
@@ -19,14 +20,16 @@ interface ShippingRatesStepProps {
 
 interface ShippingRate {
   id: string
-  provider: string
-  service_level_name: string
-  amount: number
+  provider?: string
+  carrier?: string
+  service_level_name?: string
+  service?: string
+  amount: number | string
   currency: string
   estimated_days: number
-  duration_terms: string
-  carrier_account: string
-  attributes: any
+  duration_terms?: string
+  carrier_account?: string
+  attributes?: any
 }
 
 export function ShippingRatesStep({
@@ -48,42 +51,70 @@ export function ShippingRatesStep({
     }
   }, [shipmentData.fromAddress, shipmentData.toAddress, shipmentData.parcel])
 
+  // Conversion helpers
+  const toInches = (value: number, unit: string) => {
+    if (unit === "in") return value
+    if (unit === "cm") return value / 2.54
+    return value
+  }
+  const toOunces = (value: number, unit: string) => {
+    if (unit === "oz") return value
+    if (unit === "lb") return value * 16
+    if (unit === "g") return value / 28.3495
+    if (unit === "kg") return value * 35.274
+    return value
+  }
+
   const fetchShippingRates = async () => {
     setFetchingRates(true)
     try {
+      // Convert all dimensions to inches and weight to ounces
+      const parcel = shipmentData.parcel || {}
+      const length = toInches(Number(parcel.length), parcel.distance_unit)
+      const width = toInches(Number(parcel.width), parcel.distance_unit)
+      const height = toInches(Number(parcel.height), parcel.distance_unit)
+      const weight = toOunces(Number(parcel.weight), parcel.mass_unit)
+
+      // Match calculator payload: address_from, address_to, parcels (array)
+      // But include all available address fields for Shippo compatibility
+      const payload = {
+        address_from: {
+          zip: shipmentData.fromAddress?.postal_code,
+          country: shipmentData.fromAddress?.country_code || "US",
+          city: shipmentData.fromAddress?.city,
+          state: shipmentData.fromAddress?.state,
+          street1: shipmentData.fromAddress?.address_line1,
+          street2: shipmentData.fromAddress?.address_line2,
+          name: shipmentData.fromAddress?.full_name,
+        },
+        address_to: {
+          zip: shipmentData.toAddress?.postal_code,
+          country: shipmentData.toAddress?.country_code || "US",
+          city: shipmentData.toAddress?.city,
+          state: shipmentData.toAddress?.state,
+          street1: shipmentData.toAddress?.street1,
+          street2: shipmentData.toAddress?.street2,
+          name: shipmentData.toAddress?.full_name,
+        },
+        parcels: [
+          {
+            length: String(length),
+            width: String(width),
+            height: String(height),
+            distance_unit: "in",
+            weight,
+            mass_unit: "oz",
+            ...(parcel.parcel_template ? { template: parcel.parcel_template } : {}),
+          },
+        ],
+      };
+
       const response = await fetch("/api/calculate-rates", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          from_address: {
-            name: shipmentData.fromAddress.full_name,
-            street1: shipmentData.fromAddress.address_line1,
-            street2: shipmentData.fromAddress.address_line2,
-            city: shipmentData.fromAddress.city,
-            state: shipmentData.fromAddress.state,
-            zip: shipmentData.fromAddress.postal_code,
-            country: shipmentData.fromAddress.country_code,
-          },
-          to_address: {
-            name: shipmentData.toAddress.full_name,
-            street1: shipmentData.toAddress.street1,
-            street2: shipmentData.toAddress.street2,
-            city: shipmentData.toAddress.city,
-            state: shipmentData.toAddress.state,
-            zip: shipmentData.toAddress.postal_code,
-            country: shipmentData.toAddress.country_code,
-          },
-          parcel: {
-            length: shipmentData.parcel.length,
-            width: shipmentData.parcel.width,
-            height: shipmentData.parcel.height,
-            distance_unit: shipmentData.parcel.distance_unit,
-            weight: shipmentData.parcel.weight,
-            mass_unit: "oz", // Ensure mass_unit is always 'oz'
-          },
-        }),
+        body: JSON.stringify(payload),
       })
 
       if (!response.ok) {
@@ -91,6 +122,7 @@ export function ShippingRatesStep({
       }
 
       const data = await response.json()
+      debugRates(data.rates)
       setRates(data.rates || [])
 
       if (data.rates && data.rates.length > 0) {
@@ -129,20 +161,26 @@ export function ShippingRatesStep({
     }).format(amount)
   }
 
-  const getProviderLogo = (provider: string) => {
-    switch (provider.toLowerCase()) {
+  // Update rate rendering to use rate.carrier (not provider) for logo and display, since carrier is present in the Shippo response.
+  const getCarrierLogo = (carrier: string | undefined) => {
+    if (!carrier) return "📦";
+    switch (carrier.toLowerCase()) {
       case "usps":
-        return "🇺🇸"
+        return "🇺🇸";
       case "ups":
-        return "📦"
+        return "📦";
       case "fedex":
-        return "✈️"
+        return "✈️";
       case "dhl":
-        return "🚚"
+        return "🚚";
       default:
-        return "📮"
+        return "📮";
     }
   }
+  const safeCarrier = (carrier: string | undefined) => carrier ? carrier.toUpperCase() : "UNKNOWN";
+
+  // Defensive utility for carrier display
+  // const safeCarrier = (carrier: string | undefined) => carrier ? carrier.toUpperCase() : "UNKNOWN";
 
   if (fetchingRates) {
     return (
@@ -192,81 +230,46 @@ export function ShippingRatesStep({
             <Card
               key={rate.id}
               className={`cursor-pointer transition-all hover:shadow-md ${
-                selectedRateId === rate.id ? "ring-2 ring-primary bg-primary/5" : ""
+                selectedRateId === rate.id ? "ring-2 ring-primary bg-primary/5 border-primary" : ""
               }`}
               onClick={() => handleRateSelect(rate)}
             >
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="text-2xl">{getProviderLogo(rate.provider)}</div>
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium">{rate.provider.toUpperCase()}</span>
-                        <Badge variant="outline" className="text-xs">
-                          {rate.service_level_name}
-                        </Badge>
+              <CardContent className="p-4 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="text-2xl">{getCarrierLogo(rate.carrier)}</div>
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-medium">{safeCarrier(rate.carrier)}</span>
+                      <Badge variant="outline" className="text-xs">
+                        {rate.service_level_name || rate.service}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                      <div className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        <span>
+                          {rate.estimated_days} {rate.estimated_days === 1 ? "day" : "days"}
+                        </span>
                       </div>
-                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          <span>
-                            {rate.estimated_days} {rate.estimated_days === 1 ? "day" : "days"}
-                          </span>
-                        </div>
-                        {rate.duration_terms && <span className="text-xs">({rate.duration_terms})</span>}
-                      </div>
+                      {rate.duration_terms && <span className="text-xs">({rate.duration_terms})</span>}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-lg font-semibold">{formatPrice(rate.amount, rate.currency)}</div>
-                    <div className="text-xs text-muted-foreground">{rate.currency}</div>
-                  </div>
+                </div>
+                <div className="text-right flex flex-col items-end gap-2">
+                  <div className="text-lg font-semibold">{formatPrice(typeof rate.amount === "string" ? parseFloat(rate.amount) : rate.amount, rate.currency)}</div>
+                  <div className="text-xs text-muted-foreground">{rate.currency}</div>
+                  {selectedRateId === rate.id && (
+                    <span className="inline-block text-green-600 font-bold">✓ Selected</span>
+                  )}
                 </div>
               </CardContent>
             </Card>
           ))}
         </div>
       </div>
-
-      {/* Selected Rate Summary */}
-      {selectedRateId && (
-        <Card className="bg-muted/50">
-          <CardContent className="p-4">
-            <h4 className="font-medium mb-2">Selected Service:</h4>
-            {(() => {
-              const selectedRate = rates.find((rate) => rate.id === selectedRateId)
-              if (!selectedRate) return null
-
-              return (
-                <div className="text-sm space-y-1">
-                  <div>
-                    <strong>Carrier:</strong> {selectedRate.provider.toUpperCase()}
-                  </div>
-                  <div>
-                    <strong>Service:</strong> {selectedRate.service_level_name}
-                  </div>
-                  <div>
-                    <strong>Cost:</strong> {formatPrice(selectedRate.amount, selectedRate.currency)}
-                  </div>
-                  <div>
-                    <strong>Delivery:</strong> {selectedRate.estimated_days}{" "}
-                    {selectedRate.estimated_days === 1 ? "day" : "days"}
-                  </div>
-                </div>
-              )
-            })()}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Navigation */}
-      <div className="flex justify-between">
-        <Button variant="outline" onClick={onPrev} disabled={isLoading}>
-          Previous
-        </Button>
+      <div className="flex justify-end mt-6">
         <Button onClick={handleContinue} disabled={!selectedRateId || isLoading}>
-          Continue to Payment
+          Continue
         </Button>
       </div>
     </div>

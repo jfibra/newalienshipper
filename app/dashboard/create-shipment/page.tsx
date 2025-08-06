@@ -9,6 +9,7 @@ import { CheckCircle, Package, MapPin, CreditCard, FileText, ArrowLeft, ArrowRig
 import { useToast } from "@/hooks/use-toast"
 import { supabase } from "@/lib/supabase"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { validateAddress } from "@/lib/shippo"
 
 // Step Components
 import { AddressSelectionStep } from "@/components/shipment/address-selection-step"
@@ -62,6 +63,7 @@ export default function CreateShipment() {
   const [user, setUser] = useState<any>(null)
   const [hasPaymentMethod, setHasPaymentMethod] = useState(false)
   const [checkingPayment, setCheckingPayment] = useState(true)
+  const [addressValidation, setAddressValidation] = useState<{ from?: any, to?: any }>({})
 
   // Get current user and check payment methods
   useEffect(() => {
@@ -110,7 +112,49 @@ export default function CreateShipment() {
     setShipmentData((prev) => ({ ...prev, ...data }))
   }
 
-  const nextStep = () => {
+  const validateAddresses = async () => {
+    try {
+      setIsLoading(true)
+      const [from, to] = await Promise.all([
+        validateAddress({
+          name: shipmentData.fromAddress?.full_name,
+          street1: shipmentData.fromAddress?.address_line1,
+          street2: shipmentData.fromAddress?.address_line2,
+          city: shipmentData.fromAddress?.city,
+          state: shipmentData.fromAddress?.state,
+          zip: shipmentData.fromAddress?.postal_code,
+          country: shipmentData.fromAddress?.country_code || "US",
+        }),
+        validateAddress({
+          name: shipmentData.toAddress?.full_name,
+          street1: shipmentData.toAddress?.street1,
+          street2: shipmentData.toAddress?.street2,
+          city: shipmentData.toAddress?.city,
+          state: shipmentData.toAddress?.state,
+          zip: shipmentData.toAddress?.postal_code,
+          country: shipmentData.toAddress?.country_code || "US",
+        })
+      ])
+      setAddressValidation({ from, to })
+      return { from, to }
+    } catch (error: any) {
+      toast({
+        title: "Address Validation Failed",
+        description: error.message || "Could not validate one or both addresses. Please check and try again.",
+        variant: "destructive",
+      })
+      return null
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const nextStep = async () => {
+    if (currentStep === 1) {
+      // Validate addresses before proceeding
+      const valid = await validateAddresses()
+      if (!valid) return
+    }
     if (currentStep < STEPS.length) {
       setCurrentStep(currentStep + 1)
     }

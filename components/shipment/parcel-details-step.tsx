@@ -1,46 +1,250 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Package, Ruler, Weight } from "lucide-react"
-import { supabase } from "@/lib/supabase"
-import { useToast } from "@/hooks/use-toast"
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Package, Ruler, Weight } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { useToast } from "@/hooks/use-toast";
 
 interface ParcelDetailsStepProps {
-  shipmentData: any
-  onUpdate: (data: any) => void
-  onNext: () => void
-  onPrev: () => void
-  isLoading: boolean
+  shipmentData: any;
+  onUpdate: (data: any) => void;
+  onNext: () => void;
+  onPrev: () => void;
+  isLoading: boolean;
 }
 
 interface ParcelData {
-  length: string
-  width: string
-  height: string
-  weight: string
-  distanceUnit: "in" | "cm"
-  massUnit: "oz" | "lb" | "g" | "kg"
-  template: string
+  length: string;
+  width: string;
+  height: string;
+  weight: string;
+  distanceUnit: "in" | "cm";
+  massUnit: "oz" | "lb" | "g" | "kg";
+  template: string;
 }
 
-const PARCEL_TEMPLATES = [
-  { id: "custom", name: "Custom", description: "Enter custom dimensions" },
-  { id: "usps_small_flat_rate_box", name: "USPS Small Flat Rate Box", dimensions: "8.5 × 5.5 × 1.625 in" },
-  { id: "usps_medium_flat_rate_box", name: "USPS Medium Flat Rate Box", dimensions: "11 × 8.5 × 5.5 in" },
-  { id: "usps_large_flat_rate_box", name: "USPS Large Flat Rate Box", dimensions: "12 × 12 × 5.5 in" },
-  { id: "fedex_small_box", name: "FedEx Small Box", dimensions: "12.25 × 10.75 × 1.5 in" },
-  { id: "fedex_medium_box", name: "FedEx Medium Box", dimensions: "13.25 × 11.5 × 2.38 in" },
-  { id: "ups_small_box", name: "UPS Small Box", dimensions: "13 × 11 × 2 in" },
-]
+// --- Import full presetParcels from calculator ---
+const presetParcels = [
+  {
+    id: "USPS_FlatRateEnvelope",
+    name: "Flat Rate Envelope",
+    carrier: "USPS",
+    description: "Up to 70 lbs",
+  },
+  {
+    id: "USPS_FlatRateLegalEnvelope",
+    name: "Flat Rate Legal Envelope",
+    carrier: "USPS",
+    description: "Up to 70 lbs",
+  },
+  {
+    id: "USPS_FlatRatePaddedEnvelope",
+    name: "Flat Rate Padded Envelope",
+    carrier: "USPS",
+    description: "Up to 70 lbs",
+  },
+  {
+    id: "USPS_SmallFlatRateBox",
+    name: "Small Flat Rate Box",
+    carrier: "USPS",
+    description: '8 5/8" x 5 3/8" x 1 5/8"',
+  },
+  {
+    id: "USPS_MediumFlatRateBox",
+    name: "Medium Flat Rate Box",
+    carrier: "USPS",
+    description: '11" x 8 1/2" x 5 1/2"',
+  },
+  {
+    id: "USPS_LargeFlatRateBox",
+    name: "Large Flat Rate Box",
+    carrier: "USPS",
+    description: '12" x 12" x 6"',
+  },
+  {
+    id: "USPS_RegionalRateBoxA",
+    name: "Regional Rate Box A",
+    carrier: "USPS",
+    description: '10" x 7" x 4 3/4"',
+  },
+  {
+    id: "USPS_RegionalRateBoxB",
+    name: "USPS Regional Rate Box B",
+    carrier: "USPS",
+    description: '12" x 10 1/4" x 5"',
+  },
+  {
+    id: "USPS_LargeFlatRateBoardGameBox",
+    name: "Large Flat Rate Board Game Box",
+    carrier: "USPS",
+    description: '24" x 11 7/8" x 3 1/8"',
+  },
+  {
+    id: "UPS_Box_10kg",
+    name: "UPS Box 10kg",
+    carrier: "UPS",
+    description: "Any rigid box or thick parcel",
+  },
+  {
+    id: "UPS_Box_25kg",
+    name: "UPS Box 25kg",
+    carrier: "UPS",
+    description: "Any rigid box or thick parcel",
+  },
+  {
+    id: "UPS_Express_Box",
+    name: "UPS Express Box",
+    carrier: "UPS",
+    description: '13" x 11" x 2"',
+  },
+  {
+    id: "UPS_Express_Box_Large",
+    name: "UPS Express Box Large",
+    carrier: "UPS",
+    description: '18" x 13" x 3"',
+  },
+  {
+    id: "UPS_Express_Envelope",
+    name: "UPS Express Envelope",
+    carrier: "UPS",
+    description: '12 1/2" x 9 1/2"',
+  },
+  {
+    id: "UPS_Express_Hard_Pak",
+    name: "UPS Express Hard Pak",
+    carrier: "UPS",
+    description: '14" x 11" x 2"',
+  },
+  {
+    id: "UPS_Express_Legal_Envelope",
+    name: "UPS Express Legal Envelope",
+    carrier: "UPS",
+    description: '15" x 9 1/2"',
+  },
+  {
+    id: "UPS_Express_Pak",
+    name: "UPS Express Pak",
+    carrier: "UPS",
+    description: '16" x 12 3/4"',
+  },
+  {
+    id: "UPS_Express_Tube",
+    name: "UPS Express Tube",
+    carrier: "UPS",
+    description: '38" x 6" x 6"',
+  },
+  {
+    id: "FedEx_Box_10kg",
+    name: "FedEx Box 10kg",
+    carrier: "FedEx",
+    description: '15.81" x 12.94" x 10.19"',
+  },
+  {
+    id: "FedEx_Box_25kg",
+    name: "FedEx Box 25kg",
+    carrier: "FedEx",
+    description: '54.80" x 42.10" x 33.50"',
+  },
+  {
+    id: "FedEx_Box_Extra_Large_1",
+    name: "FedEx Box Extra Large 1",
+    carrier: "FedEx",
+    description: '11.88" x 11.00" x 10.75"',
+  },
+  {
+    id: "FedEx_Box_Extra_Large_2",
+    name: "FedEx Box Extra Large 2",
+    carrier: "FedEx",
+    description: '15.75" x 14.13" x 6.00"',
+  },
+  {
+    id: "FedEx_Box_Large_1",
+    name: "FedEx Box Large 1",
+    carrier: "FedEx",
+    description: '8.75" x 7.75" x 4.75"',
+  },
+  {
+    id: "FedEx_Box_Large_2",
+    name: "FedEx Box Large 2",
+    carrier: "FedEx",
+    description: '11.25" x 8.75" x 7.75"',
+  },
+  {
+    id: "FedEx_Box_Medium_1",
+    name: "FedEx Box Medium 1",
+    carrier: "FedEx",
+    description: '8.75" x 2.63" x 11.25"',
+  },
+  {
+    id: "FedEx_Box_Medium_2",
+    name: "FedEx Box Medium 2",
+    carrier: "FedEx",
+    description: '11.25" x 8.75" x 4.38"',
+  },
+  {
+    id: "FedEx_Box_Small_1",
+    name: "FedEx Box Small 1",
+    carrier: "FedEx",
+    description: '12.38" x 10.88" x 1.50"',
+  },
+  {
+    id: "FedEx_Box_Small_2",
+    name: "FedEx Box Small 2",
+    carrier: "FedEx",
+    description: '8.75" x 11.25" x 4.38"',
+  },
+  {
+    id: "FedEx_Envelope",
+    name: "FedEx Envelope",
+    carrier: "FedEx",
+    description: '12.50" x 9.50"',
+  },
+  {
+    id: "FedEx_Padded_Pak",
+    name: "FedEx Padded Pak",
+    carrier: "FedEx",
+    description: '11.75" x 14.75"',
+  },
+  {
+    id: "FedEx_Pak",
+    name: "FedEx Pak",
+    carrier: "FedEx",
+    description: '15.50" x 12.00"',
+  },
+  {
+    id: "FedEx_Tube",
+    name: "FedEx Tube",
+    carrier: "FedEx",
+    description: '38" x 6" x 6"',
+  },
+];
 
-export function ParcelDetailsStep({ shipmentData, onUpdate, onNext, onPrev, isLoading }: ParcelDetailsStepProps) {
-  const { toast } = useToast()
+const groupedParcels = presetParcels.reduce((acc, parcel) => {
+  if (!acc[parcel.carrier]) acc[parcel.carrier] = [];
+  acc[parcel.carrier].push(parcel);
+  return acc;
+}, {} as Record<string, typeof presetParcels>);
+
+export function ParcelDetailsStep({
+  shipmentData,
+  onUpdate,
+  onNext,
+  onPrev,
+  isLoading,
+}: ParcelDetailsStepProps) {
+  const { toast } = useToast();
   const [parcelData, setParcelData] = useState<ParcelData>({
     length: "",
     width: "",
@@ -49,98 +253,62 @@ export function ParcelDetailsStep({ shipmentData, onUpdate, onNext, onPrev, isLo
     distanceUnit: "in",
     massUnit: "oz",
     template: "custom",
-  })
+  });
+
+  // Place the useEffect here, after useState and before return
+  useEffect(() => {
+    if (
+      parcelData.template === "custom" &&
+      (!parcelData.length || !parcelData.width || !parcelData.height)
+    ) {
+      setParcelData((prev) => ({
+        ...prev,
+        length: "10",
+        width: "8",
+        height: "4",
+        distanceUnit: "in",
+      }));
+    }
+  }, [parcelData.template]);
 
   const handleInputChange = (field: keyof ParcelData, value: string) => {
-    setParcelData((prev) => ({ ...prev, [field]: value }))
-  }
+    setParcelData((prev) => ({ ...prev, [field]: value }));
+  };
 
+  // Move handleTemplateSelect above the return statement
   const handleTemplateSelect = (template: string) => {
-    setParcelData((prev) => ({ ...prev, template }))
-
-    // Auto-fill dimensions for known templates
-    switch (template) {
-      case "usps_small_flat_rate_box":
-        setParcelData((prev) => ({ ...prev, length: "8.5", width: "5.5", height: "1.625" }))
-        break
-      case "usps_medium_flat_rate_box":
-        setParcelData((prev) => ({ ...prev, length: "11", width: "8.5", height: "5.5" }))
-        break
-      case "usps_large_flat_rate_box":
-        setParcelData((prev) => ({ ...prev, length: "12", width: "12", height: "5.5" }))
-        break
-      case "fedex_small_box":
-        setParcelData((prev) => ({ ...prev, length: "12.25", width: "10.75", height: "1.5" }))
-        break
-      case "fedex_medium_box":
-        setParcelData((prev) => ({ ...prev, length: "13.25", width: "11.5", height: "2.38" }))
-        break
-      case "ups_small_box":
-        setParcelData((prev) => ({ ...prev, length: "13", width: "11", height: "2" }))
-        break
-      default:
-        // Custom - don't auto-fill
-        break
+    setParcelData((prev) => ({ ...prev, template }));
+    if (template === "custom") {
+      // Set default dimensions for custom (required by Shippo API)
+      setParcelData((prev) => ({
+        ...prev,
+        length: "10",
+        width: "8",
+        height: "4",
+        distanceUnit: "in",
+      }));
+      return;
     }
-  }
-
-  const handleSubmit = async () => {
-    try {
-      // Validate required fields
-      if (!parcelData.length || !parcelData.width || !parcelData.height || !parcelData.weight) {
-        toast({
-          title: "Missing Information",
-          description: "Please fill in all parcel dimensions and weight",
-          variant: "destructive",
-        })
-        return
+    // Try to auto-fill dimensions if available in description (e.g. '12" x 10" x 5"')
+    const selected = presetParcels.find((p) => p.id === template);
+    if (selected && selected.description) {
+      const match = selected.description.match(
+        /([\d.]+)["']?\s*[x×]\s*([\d.]+)["']?\s*[x×]\s*([\d.]+)["']?/i
+      );
+      if (match) {
+        setParcelData((prev) => ({
+          ...prev,
+          length: match[1],
+          width: match[2],
+          height: match[3],
+          distanceUnit: "in",
+          weight: prev.weight || "",
+        }));
       }
-
-      // Create parcel object (fields must match what ShippingRatesStep expects)
-      const parcel = {
-        id: crypto.randomUUID(),
-        length: Number.parseFloat(parcelData.length),
-        width: Number.parseFloat(parcelData.width),
-        height: Number.parseFloat(parcelData.height),
-        weight: Number.parseFloat(parcelData.weight),
-        distance_unit: parcelData.distanceUnit,
-        mass_unit: parcelData.massUnit,
-        parcel_template: parcelData.template !== "custom" ? parcelData.template : null,
-        created_at: new Date().toISOString(),
-      }
-
-      // Save to database
-      const { data, error } = await supabase.from("parcels").insert([parcel]).select().single()
-
-      if (error) throw error
-
-      // Pass the correct fields for rate calculation (not just DB record)
-      onUpdate({
-        parcel: {
-          length: parcel.length,
-          width: parcel.width,
-          height: parcel.height,
-          weight: parcel.weight,
-          distance_unit: parcel.distance_unit,
-          mass_unit: parcel.mass_unit,
-          parcel_template: parcel.parcel_template,
-        },
-      })
-      onNext()
-    } catch (error) {
-      console.error("Error saving parcel:", error)
-      toast({
-        title: "Error",
-        description: "Failed to save parcel details",
-        variant: "destructive",
-      })
     }
-  }
+  };
 
-  const isFormValid = () => {
-    return parcelData.length && parcelData.width && parcelData.height && parcelData.weight
-  }
-
+  // Replace old PARCEL_TEMPLATES and radio group with dropdown selection
   return (
     <div className="space-y-6">
       {/* Package Template Selection */}
@@ -148,26 +316,55 @@ export function ParcelDetailsStep({ shipmentData, onUpdate, onNext, onPrev, isLo
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Package className="h-5 w-5" />
-            Package Type
+            Predefined Package (Optional)
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <RadioGroup value={parcelData.template} onValueChange={handleTemplateSelect}>
-            <div className="grid gap-3">
-              {PARCEL_TEMPLATES.map((template) => (
-                <div key={template.id} className="flex items-center space-x-2">
-                  <RadioGroupItem value={template.id} id={template.id} />
-                  <Label htmlFor={template.id} className="flex-1 cursor-pointer">
-                    <div className="font-medium">{template.name}</div>
-                    {template.dimensions && <div className="text-sm text-muted-foreground">{template.dimensions}</div>}
-                    {template.description && (
-                      <div className="text-sm text-muted-foreground">{template.description}</div>
-                    )}
-                  </Label>
+          <Select
+            value={parcelData.template}
+            onValueChange={handleTemplateSelect}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue>
+                {parcelData.template === "custom"
+                  ? "Custom dimensions"
+                  : (() => {
+                      const selected = presetParcels.find(
+                        (p) => p.id === parcelData.template
+                      );
+                      return selected
+                        ? `${selected.carrier}: ${selected.name}`
+                        : "Select a package";
+                    })()}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent className="max-h-80 w-full">
+              <SelectItem value="custom">Custom dimensions</SelectItem>
+              {Object.entries(groupedParcels).map(([carrier, parcels]) => (
+                <div key={carrier}>
+                  <div className="px-3 py-2 text-sm font-bold text-gray-700 bg-gray-50 sticky top-0 border-b">
+                    {carrier} Packages
+                  </div>
+                  {parcels.map((parcel) => (
+                    <SelectItem
+                      key={parcel.id}
+                      value={parcel.id}
+                      className="pl-6 py-3"
+                    >
+                      <div className="flex items-center space-x-3 w-full">
+                        <div className="font-medium">{parcel.name}</div>
+                        {parcel.description && (
+                          <div className="text-xs text-gray-500 mt-1">
+                            {parcel.description}
+                          </div>
+                        )}
+                      </div>
+                    </SelectItem>
+                  ))}
                 </div>
               ))}
-            </div>
-          </RadioGroup>
+            </SelectContent>
+          </Select>
         </CardContent>
       </Card>
 
@@ -184,7 +381,9 @@ export function ParcelDetailsStep({ shipmentData, onUpdate, onNext, onPrev, isLo
             <Label>Unit</Label>
             <Select
               value={parcelData.distanceUnit}
-              onValueChange={(value: "in" | "cm") => handleInputChange("distanceUnit", value)}
+              onValueChange={(value: "in" | "cm") =>
+                handleInputChange("distanceUnit", value)
+              }
             >
               <SelectTrigger className="w-32">
                 <SelectValue />
@@ -250,7 +449,9 @@ export function ParcelDetailsStep({ shipmentData, onUpdate, onNext, onPrev, isLo
             <Label>Unit</Label>
             <Select
               value={parcelData.massUnit}
-              onValueChange={(value: "oz" | "lb" | "g" | "kg") => handleInputChange("massUnit", value)}
+              onValueChange={(value: "oz" | "lb" | "g" | "kg") =>
+                handleInputChange("massUnit", value)
+              }
             >
               <SelectTrigger className="w-32">
                 <SelectValue />
@@ -287,15 +488,23 @@ export function ParcelDetailsStep({ shipmentData, onUpdate, onNext, onPrev, isLo
             <h4 className="font-medium mb-2">Package Summary:</h4>
             <div className="text-sm space-y-1">
               <div>
-                <strong>Dimensions:</strong> {parcelData.length} × {parcelData.width} × {parcelData.height}{" "}
+                <strong>Dimensions:</strong> {parcelData.length} ×{" "}
+                {parcelData.width} × {parcelData.height}{" "}
                 {parcelData.distanceUnit}
               </div>
               <div>
-                <strong>Weight:</strong> {parcelData.weight} {parcelData.massUnit}
+                <strong>Weight:</strong> {parcelData.weight}{" "}
+                {parcelData.massUnit}
               </div>
               {parcelData.template !== "custom" && (
                 <div>
-                  <strong>Template:</strong> {PARCEL_TEMPLATES.find((t) => t.id === parcelData.template)?.name}
+                  <strong>Template:</strong>{" "}
+                  {(() => {
+                    const found = presetParcels.find(
+                      (t) => t.id === parcelData.template
+                    );
+                    return found ? found.name : parcelData.template;
+                  })()}
                 </div>
               )}
             </div>
@@ -313,5 +522,68 @@ export function ParcelDetailsStep({ shipmentData, onUpdate, onNext, onPrev, isLo
         </Button>
       </div>
     </div>
-  )
+  );
+
+  // Add/fix isFormValid and handleSubmit
+  function isFormValid() {
+    return (
+      parcelData.length &&
+      parcelData.width &&
+      parcelData.height &&
+      parcelData.weight
+    );
+  }
+
+  async function handleSubmit() {
+    try {
+      if (!isFormValid()) {
+        toast({
+          title: "Missing Information",
+          description: "Please fill in all parcel dimensions and weight",
+          variant: "destructive",
+        });
+        return;
+      }
+      // Create parcel object (fields must match what ShippingRatesStep expects)
+      const parcel = {
+        id: crypto.randomUUID(),
+        length: Number.parseFloat(parcelData.length),
+        width: Number.parseFloat(parcelData.width),
+        height: Number.parseFloat(parcelData.height),
+        weight: Number.parseFloat(parcelData.weight),
+        distance_unit: parcelData.distanceUnit,
+        mass_unit: parcelData.massUnit,
+        parcel_template:
+          parcelData.template !== "custom" ? parcelData.template : null,
+        created_at: new Date().toISOString(),
+      };
+      // Save to database
+      const { data, error } = await supabase
+        .from("parcels")
+        .insert([parcel])
+        .select()
+        .single();
+      if (error) throw error;
+      // Pass the correct fields for rate calculation (not just DB record)
+      onUpdate({
+        parcel: {
+          length: parcel.length,
+          width: parcel.width,
+          height: parcel.height,
+          weight: parcel.weight,
+          distance_unit: parcel.distance_unit,
+          mass_unit: parcel.mass_unit,
+          parcel_template: parcel.parcel_template,
+        },
+      });
+      onNext();
+    } catch (error) {
+      console.error("Error saving parcel:", error);
+      toast({
+        title: "Error",
+        description: "Failed to save parcel details",
+        variant: "destructive",
+      });
+    }
+  }
 }
